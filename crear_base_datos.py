@@ -116,7 +116,7 @@ def inicializar_bd(ruta_db="salud_rural.db", crear_usuario_demo=False):
         cursor.execute("""
             INSERT OR IGNORE INTO usuarios
                 (usuario, contrasena_hash, nombre_responsable, cargo, area_salud, distrito_salud)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """, (
             "tsr_demo",
             generate_password_hash("demo123"),

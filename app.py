@@ -84,7 +84,7 @@ def login():
         fila = fetchone(
             "SELECT id, usuario, nombre_responsable, cargo, area_salud, "
             "distrito_salud, contrasena_hash "
-            "FROM usuarios WHERE usuario = ?",
+            "FROM usuarios WHERE usuario = %s",
             (usuario,)
         )
 
@@ -133,7 +133,7 @@ def registrar_tsr():
             return render_template("registrar.html")
 
         existe = fetchone(
-            "SELECT id FROM usuarios WHERE usuario = ?", (usuario,)
+            "SELECT id FROM usuarios WHERE usuario = %s", (usuario,)
         )
         if existe:
             flash(f"El usuario «{usuario}» ya existe.", "danger")
@@ -142,7 +142,7 @@ def registrar_tsr():
         execute("""
             INSERT INTO usuarios
                 (usuario, contrasena_hash, nombre_responsable, cargo, area_salud, distrito_salud)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """, (usuario, hash_contrasena(contrasena), nombre, cargo, area_salud, distrito_salud))
         commit()
 
@@ -207,11 +207,11 @@ def dashboard():
     # Alumnos en rango 6-14 años calculados desde fecha_corte
     en_rango = fetchone("""
         SELECT COUNT(*) AS c FROM estudiantes
-        WHERE (CAST(? AS INTEGER) - CAST(substr(fecha_nacimiento,7,4) AS INTEGER)
+        WHERE (CAST(%s AS INTEGER) - CAST(substr(fecha_nacimiento,7,4) AS INTEGER)
                - CASE
-                   WHEN CAST(substr(fecha_nacimiento,4,2) AS INTEGER) > ?
-                        OR (CAST(substr(fecha_nacimiento,4,2) AS INTEGER) = ?
-                            AND CAST(substr(fecha_nacimiento,1,2) AS INTEGER) > ?)
+                   WHEN CAST(substr(fecha_nacimiento,4,2) AS INTEGER) > %s
+                        OR (CAST(substr(fecha_nacimiento,4,2) AS INTEGER) = %s
+                            AND CAST(substr(fecha_nacimiento,1,2) AS INTEGER) > %s)
                    THEN 1 ELSE 0
                  END
               ) BETWEEN 6 AND 14
@@ -290,7 +290,7 @@ def sisca_form():
     if codigo_centro:
         escuela = fetchone(
             "SELECT codigo_centro, nombre_centro, tipo_centro, servicio_salud "
-            "FROM escuelas WHERE codigo_centro = ?", (codigo_centro,)
+            "FROM escuelas WHERE codigo_centro = %s", (codigo_centro,)
         )
 
     hoy = date.today()
@@ -316,7 +316,7 @@ def sisca_fluor_form():
     if codigo_centro:
         escuela = fetchone(
             "SELECT codigo_centro, nombre_centro, servicio_salud "
-            "FROM escuelas WHERE codigo_centro = ?", (codigo_centro,)
+            "FROM escuelas WHERE codigo_centro = %s", (codigo_centro,)
         )
 
     hoy = date.today()
@@ -365,7 +365,7 @@ def generar_sigsa22():
         fc = date(2026, 3, 31)
 
     escuela = fetchone(
-        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = ?",
+        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s",
         (codigo_centro,)
     )
     if not escuela:
@@ -379,7 +379,7 @@ def generar_sigsa22():
                e.grado, e.seccion
         FROM registros_salud r
         JOIN estudiantes e ON r.cui_estudiante = e.cui
-        WHERE r.codigo_centro = ?
+        WHERE r.codigo_centro = %s
         GROUP BY e.cui
     """, (codigo_centro,))
 
@@ -509,8 +509,8 @@ def procesar_sisca():
     # ── Actualizar perfil del usuario ─────────────────────────────────────
     execute("""
         UPDATE usuarios
-        SET nombre_responsable=?, cargo=?, area_salud=?, distrito_salud=?
-        WHERE id=?
+        SET nombre_responsable=%s, cargo=%s, area_salud=%s, distrito_salud=%s
+        WHERE id=%s
     """, (responsable, cargo, area_salud, distrito_salud, session["usuario_id"]))
     commit()
     session.update(nombre_responsable=responsable, cargo=cargo,
@@ -518,7 +518,7 @@ def procesar_sisca():
 
     # ── Consultar escuela ─────────────────────────────────────────────────
     escuela = fetchone(
-        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = ?",
+        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s",
         (codigo_centro,)
     )
     if not escuela:
@@ -532,7 +532,7 @@ def procesar_sisca():
                e.grado, e.seccion
         FROM registros_salud r
         JOIN estudiantes e ON r.cui_estudiante = e.cui
-        WHERE r.codigo_centro = ?
+        WHERE r.codigo_centro = %s
         GROUP BY e.cui
         ORDER BY e.grado, e.seccion, e.nombre_completo
     """, (codigo_centro,))
@@ -752,7 +752,7 @@ def exportar_escuela(codigo_centro):
         fecha_corte = _obtener_fecha_corte()
 
     escuela = fetchone(
-        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = ?",
+        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s",
         (codigo_centro,)
     )
     if not escuela:
@@ -764,7 +764,7 @@ def exportar_escuela(codigo_centro):
                e.grado, e.seccion
         FROM registros_salud r
         JOIN estudiantes e ON r.cui_estudiante = e.cui
-        WHERE r.codigo_centro = ?
+        WHERE r.codigo_centro = %s
         GROUP BY e.cui
     """, (codigo_centro,))
 
@@ -827,7 +827,7 @@ def exportar_consolidado_total():
 def eliminar_escuela(codigo_centro):
     if "usuario_id" not in session:
         return login_requerido()
-    execute("DELETE FROM escuelas WHERE codigo_centro = ?", (codigo_centro,))
+    execute("DELETE FROM escuelas WHERE codigo_centro = %s", (codigo_centro,))
     commit()
     flash(f"Escuela {codigo_centro} eliminada.", "info")
     return redirect(url_for("consolidado"))
@@ -891,7 +891,7 @@ def cargar_pdf_consolidado():
             execute("""
                 INSERT OR IGNORE INTO escuelas
                     (codigo_centro, nombre_centro, tipo_centro, servicio_salud)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
             """, (codigo, nombre_escuela, "PÚBLICO", ""))
 
             contador = 0
@@ -908,17 +908,17 @@ def cargar_pdf_consolidado():
                 execute("""
                     INSERT OR IGNORE INTO estudiantes
                         (cui, nombre_completo, sexo, fecha_nacimiento, grado, seccion)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                 """, (cui, nombre_completo, sexo_db, fecha_nac,
                       a.get("grado", ""), a.get("seccion", "")))
                 execute("""
-                    UPDATE estudiantes SET grado = ?, seccion = ? WHERE cui = ?
+                    UPDATE estudiantes SET grado = %s, seccion = %s WHERE cui = %s
                 """, (a.get("grado", ""), a.get("seccion", ""), cui))
                 execute("""
                     INSERT INTO registros_salud
                         (cui_estudiante, codigo_centro, tipo_intervencion,
                          campana, fecha_aplicacion, fecha_corte, edad_calculo, usuario_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (cui, codigo, "Desparasitación", "Primera",
                       date.today().isoformat(), fecha_corte_db, edad, session["usuario_id"]))
                 contador += 1

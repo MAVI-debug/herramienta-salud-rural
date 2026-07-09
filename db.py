@@ -46,10 +46,10 @@ def _is_pg():
 
 
 def execute(sql, params=None):
-    """Ejecuta SQL adaptando placeholders ? → %s para PostgreSQL."""
+    """Ejecuta SQL adaptando placeholders %s → ? para SQLite."""
     db = get_db()
-    if _is_pg() and params is not None:
-        sql = sql.replace("?", "%s")
+    if not _is_pg() and params is not None:
+        sql = sql.replace("%s", "?")
     if _is_pg():
         cur = db.cursor()
         cur.execute(sql, params or ())
