@@ -51,7 +51,8 @@ def execute(sql, params=None):
     if not _is_pg() and params is not None:
         sql = sql.replace("%s", "?")
     if _is_pg():
-        cur = db.cursor()
+        from psycopg2.extras import RealDictCursor
+        cur = db.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params or ())
     else:
         cur = db.execute(sql, params or ())
