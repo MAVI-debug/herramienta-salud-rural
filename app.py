@@ -62,6 +62,25 @@ def login_requerido():
 
 
 # ---------------------------------------------------------------------------
+# Ruta temporal — regenerar usuario demo
+# ---------------------------------------------------------------------------
+@app.route("/generar-demo")
+def generar_demo():
+    contrasena_plano = "demo123"
+    hash_nuevo = hash_contrasena(contrasena_plano)
+    execute("DELETE FROM usuarios WHERE usuario = %s", ("tsr_demo",))
+    execute("""
+        INSERT INTO usuarios
+            (usuario, contrasena_hash, nombre_responsable, cargo, area_salud, distrito_salud)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, ("tsr_demo", hash_nuevo, "Andrés Romeo Mazariegos Vicente",
+          "Técnico en Salud Rural (TSR)", "TOTONICAPÁN", "TOTONICAPÁN"))
+    commit()
+    print(f"DEBUG /generar-demo: hash insertado = {hash_nuevo}")
+    return f"Usuario tsr_demo recreado. Hash: {hash_nuevo}", 200
+
+
+# ---------------------------------------------------------------------------
 # Rutas — Login
 # ---------------------------------------------------------------------------
 @app.route("/", methods=["GET"])
