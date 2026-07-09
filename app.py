@@ -205,7 +205,7 @@ def dashboard():
         FROM registros_salud r
         JOIN estudiantes s ON r.cui_estudiante = s.cui
         JOIN escuelas e ON r.codigo_centro = e.codigo_centro
-        GROUP BY r.codigo_centro
+        GROUP BY e.nombre_centro, e.codigo_centro
         ORDER BY c DESC
         LIMIT 1
     """)
