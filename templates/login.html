@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Iniciar Sesión — TSR{% endblock %}
+{% block contenido %}
+<div class="login-page">
+    <div class="login-card">
+        <div class="login-header">
+            <div class="login-logo">TSR</div>
+            <p class="login-sub">HERRAMIENTA DE SALUD RURAL</p>
+        </div>
+        <form method="POST" class="login-form">
+            <label for="usuario">Usuario</label>
+            <input type="text" name="usuario" id="usuario" placeholder="tu_usuario" required autofocus>
+            <label for="contrasena">Contraseña</label>
+            <input type="password" name="contrasena" id="contrasena" placeholder="••••••••" required>
+            <button type="submit">Ingresar</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

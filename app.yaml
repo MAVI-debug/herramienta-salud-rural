@@ -1,0 +1,19 @@
+runtime: python312
+entrypoint: gunicorn -b :$PORT app:app
+
+env_variables:
+  DATABASE_URL: "postgresql://USER:PASS@HOST:5432/DBNAME"
+
+automatic_scaling:
+  min_instances: 1
+  max_instances: 4
+  target_cpu_utilization: 0.75
+
+handlers:
+- url: /static
+  static_dir: static
+  secure: always
+
+- url: /.*
+  script: auto
+  secure: always

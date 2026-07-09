@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Jornada de Fluorización — TSR{% endblock %}
+{% block contenido %}
+<div class="jornada-page">
+    <a href="/dashboard" class="btn-retorno">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        Volver al Panel
+    </a>
+
+    <div class="jornada-card">
+        <div class="jornada-header">
+            <span class="jornada-icono">🦷</span>
+            <h2>Jornada de Fluorización Escolar</h2>
+            <p class="jornada-sub">Seleccioná el establecimiento para iniciar la carga de datos SIGSA-22.</p>
+        </div>
+
+        <div class="jornada-lista">
+            {% for e in escuelas %}
+            <div class="jornada-item">
+                <div class="jornada-item-info">
+                    <span class="jornada-item-nombre">{{ e.nombre_centro }}</span>
+                    <span class="jornada-item-meta">{{ e.codigo_centro }} · {{ e.tipo_centro }}</span>
+                </div>
+                <a href="/sisca_fluor?codigo_centro={{ e.codigo_centro }}" class="jornada-item-btn">Seleccionar</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

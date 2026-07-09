@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% block title %}Consolidado — TSR{% endblock %}
+{% block contenido %}
+<div class="consolidado-page">
+    <a href="/dashboard" class="btn-retorno">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        Volver al Panel
+    </a>
+
+    <div class="consolidado-card">
+        <div class="hcard-row">
+            <h2>Consolidado e Historial</h2>
+            <div class="consol-acciones">
+                <a href="{{ url_for('exportar_consolidado_total', fecha_corte=fecha_corte_str) }}" class="btn-descarga">
+                    ⬇ Descargar Excel completo
+                </a>
+            </div>
+        </div>
+
+        <form method="GET" action="{{ url_for('consolidado') }}" class="global-fecha-form">
+            <label class="fc-label-global">Fecha de corte:</label>
+            <input type="text" name="fecha_corte" value="{{ fecha_corte_str }}"
+                   placeholder="DD/MM/AAAA" class="global-date-text"
+                   onkeydown="if(event.key==='Enter'){this.form.submit()}"
+                   onblur="this.form.submit()">
+        </form>
+    </div>
+
+    <form id="uploadForm" method="POST" action="{{ url_for('cargar_pdf_consolidado') }}" enctype="multipart/form-data" class="upload-pdf-bar">
+        <div class="upload-content">
+            <span class="upload-icon">📄</span>
+            <label class="upload-label">Añadir Escuela (Subir PDF Nominal)</label>
+            <input type="file" name="archivos_pdf" accept=".pdf" multiple required class="upload-input">
+            <input type="hidden" name="fecha_corte" value="{{ fecha_corte_str }}">
+            <button type="submit" class="btn-upload-submit">Subir y procesar</button>
+        </div>
+    </form>
+
+    <div id="uploadOverlay" class="loading-overlay" style="display:none;">
+        <div class="loading-card">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Procesando archivos…</p>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="uploadProgressFill"></div>
+            </div>
+            <p class="progress-porcent" id="uploadProgressPorcent">0%</p>
+            <p class="loading-sub">Extrayendo datos de los PDFs seleccionados</p>
+        </div>
+    </div>
+
+    {% if matriz %}
+    <div class="consolidado-card consolidado-table-wrap">
+        <div class="tabla-scroll">
+            <table class="tabla consol-tabla">
+                <thead>
+                    <tr>
+                        <th rowspan="2">#</th>
+                        <th rowspan="2">Nombre de Escuela</th>
+                        <th rowspan="2">Código</th>
+                        <th colspan="2">≤ 5 años</th>
+                        <th colspan="2">6 – 9 años</th>
+                        <th colspan="2">10 – 14 años</th>
+                        <th colspan="2">15 – 19 años</th>
+                        <th colspan="2">Total por género</th>
+                        <th colspan="3">Estudiantes de 6 a 14 años</th>
+                        <th rowspan="2">Total<br>General</th>
+                        <th rowspan="2">Acción</th>
+                    </tr>
+                    <tr>
+                        <th>F</th><th>M</th>
+                        <th>F</th><th>M</th>
+                        <th>F</th><th>M</th>
+                        <th>F</th><th>M</th>
+                        <th>F</th><th>M</th>
+                        <th>F</th><th>M</th><th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in matriz %}
+                    {% set ns = namespace(f=0, m=0) %}
+                    {% for r in ['5_y_menos', '6_a_9', '10_a_14', '15_a_19'] %}
+                    {% set ns.f = ns.f + m.get(r + '_f', 0) %}
+                    {% set ns.m = ns.m + m.get(r + '_m', 0) %}
+                    {% endfor %}
+                    {% set f_6_14 = m.get('6_a_9_f',0) + m.get('10_a_14_f',0) %}
+                    {% set m_6_14 = m.get('6_a_9_m',0) + m.get('10_a_14_m',0) %}
+                    {% set total_6_14 = f_6_14 + m_6_14 %}
+                    <tr class="clickable" data-target="detalle-{{ loop.index }}">
+                        <td>{{ loop.index }}</td>
+                        <td class="col-escuela">{{ m.nombre }}</td>
+                        <td>{{ m.codigo }}</td>
+                        <td>{{ m.get('5_y_menos_f',0) }}</td><td>{{ m.get('5_y_menos_m',0) }}</td>
+                        <td>{{ m.get('6_a_9_f',0) }}</td><td>{{ m.get('6_a_9_m',0) }}</td>
+                        <td>{{ m.get('10_a_14_f',0) }}</td><td>{{ m.get('10_a_14_m',0) }}</td>
+                        <td>{{ m.get('15_a_19_f',0) }}</td><td>{{ m.get('15_a_19_m',0) }}</td>
+                        <td>{{ ns.f }}</td><td>{{ ns.m }}</td>
+                        <td>{{ f_6_14 }}</td><td>{{ m_6_14 }}</td><td>{{ total_6_14 }}</td>
+                        <td>{{ ns.f + ns.m }}</td>
+                        <td>
+                            <span class="toggle-arrow">▼</span>
+                            <form method="POST" action="{{ url_for('eliminar_escuela', codigo_centro=m.codigo) }}" style="display:inline;">
+                                <button type="submit" class="btn-eliminar" onclick="return confirm('¿Eliminar {{ m.nombre }}?')">✕</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr class="detalle-row" id="detalle-{{ loop.index }}">
+                        <td colspan="18">
+                            <div class="detalle-content">
+                                <div class="detalle-toolbar">
+                                    <strong>Listado nominal — {{ m.nombre }}</strong>
+                    <a href="{{ url_for('exportar_escuela', codigo_centro=m.codigo, fecha_corte=fecha_corte_str) }}" class="btn-descarga-sm">
+                        ⬇ Descargar Excel
+                    </a>
+                                </div>
+                                {% if m.alumnos_agrupados %}
+                                {% for grupo in m.alumnos_agrupados %}
+                                <div class="detalle-grupo">
+                                    <div class="detalle-grupo-header">{{ grupo.grado or 'SIN GRADO' }} — Sección {{ grupo.seccion or 'SIN SECCIÓN' }}</div>
+                                    <div class="detalle-scroll">
+                                    <table class="tabla detalle-tabla">
+                                        <thead>
+                                            <tr>
+                                                <th>No.</th>
+                                                <th>Nombre</th>
+                                                <th>CUI</th>
+                                                <th>Género</th>
+                                                <th>Día</th>
+                                                <th>Mes</th>
+                                                <th>Año</th>
+                                                <th>Edad</th>
+                                                <th>≤5</th>
+                                                <th>6-9</th>
+                                                <th>10-14</th>
+                                                <th>15-19</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for a in grupo.alumnos %}
+                                            <tr>
+                                                <td>{{ loop.index }}</td>
+                                                <td>{{ a.nombre }}</td>
+                                                <td>{{ a.cui }}</td>
+                                                <td>{{ a.genero }}</td>
+                                                {% set parts = a.fecha_nac.split('/') %}
+                                                <td>{{ parts[0] if parts|length >= 1 else '' }}</td>
+                                                <td>{{ parts[1] if parts|length >= 2 else '' }}</td>
+                                                <td>{{ parts[2] if parts|length >= 3 else '' }}</td>
+                                                <td>{{ a.edad if a.edad is not none else '' }}</td>
+                                                {% set r = '' %}
+                                                {% if a.edad is not none and a.edad <= 5 %}{% set r = '≤5' %}{% endif %}
+                                                {% if a.edad is not none and a.edad >= 6 and a.edad <= 9 %}{% set r = '6-9' %}{% endif %}
+                                                {% if a.edad is not none and a.edad >= 10 and a.edad <= 14 %}{% set r = '10-14' %}{% endif %}
+                                                {% if a.edad is not none and a.edad >= 15 and a.edad <= 19 %}{% set r = '15-19' %}{% endif %}
+                                                <td>{{ 'X' if r == '≤5' else '' }}</td>
+                                                <td>{{ 'X' if r == '6-9' else '' }}</td>
+                                                <td>{{ 'X' if r == '10-14' else '' }}</td>
+                                                <td>{{ 'X' if r == '15-19' else '' }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                                {% else %}
+                                <p class="vacio">Sin estudiantes registrados.</p>
+                                {% endif %}
+                                <button type="button" class="btn-close-listado">▲ Ocultar listado nominal</button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td colspan="3"><strong>TOTALES</strong></td>
+                        <td>{{ totales['5_y_menos_f'] }}</td><td>{{ totales['5_y_menos_m'] }}</td>
+                        <td>{{ totales['6_a_9_f'] }}</td><td>{{ totales['6_a_9_m'] }}</td>
+                        <td>{{ totales['10_a_14_f'] }}</td><td>{{ totales['10_a_14_m'] }}</td>
+                        <td>{{ totales['15_a_19_f'] }}</td><td>{{ totales['15_a_19_m'] }}</td>
+                        <td>{{ totales['tot_f'] }}</td><td>{{ totales['tot_m'] }}</td>
+                        <td>{{ totales['f_6_14'] }}</td><td>{{ totales['m_6_14'] }}</td><td>{{ totales['sub_6_14'] }}</td>
+                        <td>{{ totales['gral'] }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="consolidado-card vacio-consol">
+        <p>Aún no hay datos consolidados. Procesa un PDF desde Desparasitación o Fluorización.</p>
+        <a href="/dashboard" class="btn-retorno">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            Volver al Panel
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.clickable').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var target = document.getElementById(this.dataset.target);
+            if (target) {
+                target.classList.toggle('visible');
+                var arrow = this.querySelector('.toggle-arrow');
+                if (arrow) {
+                    arrow.textContent = target.classList.contains('visible') ? '▲' : '▼';
+                }
+            }
+        });
+    });
+
+    document.querySelectorAll('.btn-close-listado').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var detalleRow = this.closest('.detalle-row');
+            var clickableRow = detalleRow && detalleRow.previousElementSibling;
+            if (clickableRow && clickableRow.classList.contains('clickable')) {
+                var target = document.getElementById(clickableRow.dataset.target);
+                if (target && target.classList.contains('visible')) {
+                    target.classList.remove('visible');
+                    var arrow = clickableRow.querySelector('.toggle-arrow');
+                    if (arrow) arrow.textContent = '▼';
+                }
+                setTimeout(function() {
+                    clickableRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 120);
+            }
+        });
+    });
+
+    var uploadForm = document.getElementById('uploadForm');
+    var uploadOverlay = document.getElementById('uploadOverlay');
+    var progressFill = document.getElementById('uploadProgressFill');
+    var progressPorcent = document.getElementById('uploadProgressPorcent');
+
+    if (uploadForm) {
+        uploadForm.addEventListener('submit', function(e) {
+            var files = uploadForm.querySelector('input[type=file]').files;
+            if (files.length === 0) return;
+
+            uploadOverlay.style.display = 'flex';
+            uploadOverlay.style.opacity = '0';
+            setTimeout(function() {
+                uploadOverlay.style.transition = 'opacity 0.3s';
+                uploadOverlay.style.opacity = '1';
+            }, 20);
+
+            var pct = 0;
+            var interval = setInterval(function() {
+                if (pct < 90) {
+                    pct += Math.random() * 6 + 1;
+                    if (pct > 90) pct = 90;
+                    progressFill.style.width = Math.round(pct) + '%';
+                    progressPorcent.textContent = Math.round(pct) + '%';
+                }
+            }, 500);
+
+            setTimeout(function() {
+                clearInterval(interval);
+                progressFill.style.width = '100%';
+                progressPorcent.textContent = '100%';
+            }, 30000);
+        });
+    }
+});
+</script>
+{% endblock %}

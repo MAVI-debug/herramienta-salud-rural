@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — TSR{% endblock %}
+{% block contenido %}
+<div class="dashboard">
+    <!-- ─── Banner de Bienvenida ──────────────────── -->
+    <div class="banner-bienvenida">
+        <h1>Bienvenido, {{ session.nombre_responsable or 'Usuario' }}.</h1>
+        <p>Técnico en Salud Rural (TSR)</p>
+    </div>
+
+    <!-- ─── Tarjetas de Métricas ─────────────────── -->
+    <div class="metricas">
+        <div class="metrica metrica-escuelas" onclick="toggleMetrica(this)">
+            <div class="metrica-inner">
+                <span class="metrica-icono">🏫</span>
+                <div class="metrica-contenido">
+                    <span class="metrica-num">{{ total_escuelas }}</span>
+                    <span class="metrica-label">Escuelas registradas</span>
+                </div>
+            </div>
+            <div class="metrica-expand">
+                <div class="metrica-expand-inner">
+                    {% set eorm = desglose_tipos.get('EORM', 0) %}
+                    {% set parv = desglose_tipos.get('PARVULOS', 0) %}
+                    <div class="stat-row"><span class="stat-label">EORM</span><span class="stat-highlight">{{ eorm }}</span></div>
+                    <div class="stat-row"><span class="stat-label">Párvulos</span><span class="stat-highlight">{{ parv }}</span></div>
+                    <div class="stat-row"><span class="stat-label">Mayor población</span><span class="stat-mint">{{ nombre_mayor }}</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="metrica metrica-estudiantes" onclick="toggleMetrica(this)">
+            <div class="metrica-inner">
+                <span class="metrica-icono">👥</span>
+                <div class="metrica-contenido">
+                    <span class="metrica-num">{{ total_estudiantes }}</span>
+                    <span class="metrica-label">Estudiantes en base</span>
+                </div>
+            </div>
+            <div class="metrica-expand">
+                <div class="metrica-expand-inner">
+                    <div class="stat-row"><span class="stat-label">Niños (M)</span><span class="stat-highlight">{{ total_m }}</span></div>
+                    <div class="stat-row"><span class="stat-label">Niñas (F)</span><span class="stat-highlight">{{ total_f }}</span></div>
+                    <div class="stat-row"><span class="stat-label">Rango 6–14 años</span><span class="stat-mint">{{ en_rango }} ({{ pct_rango }}%)</span></div>
+                    <div class="stat-row" style="font-size:0.72rem;color:rgba(255,255,255,0.35);padding-top:4px;">
+                        <span>Corte: {{ fecha_corte_str }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Botones de Acción ────────────────────── -->
+    <div class="acciones-grid">
+        <a href="/desparasitacion" class="btn-accion btn-desparasitacion">
+            <span class="accion-icono">💊</span>
+            <span class="accion-texto">Desparasitación</span>
+        </a>
+
+        <a href="/fluorizacion" class="btn-accion btn-fluorizacion">
+            <span class="accion-icono">🦷</span>
+            <span class="accion-texto">Fluorización</span>
+        </a>
+
+        <div class="btn-accion-wrapper">
+            <a href="{{ url_for('listar_escuelas') }}" class="btn-accion btn-escuelas">
+                <span class="accion-icono">🏫</span>
+                <span class="accion-texto">Escuelas</span>
+            </a>
+        </div>
+        <div class="btn-accion-wrapper">
+            <a href="{{ url_for('consolidado') }}" class="btn-accion btn-consolidado">
+                <span class="accion-icono">📊</span>
+                <span class="accion-texto">Consolidado</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- ─── Resumen General ─────────────────────── -->
+    <div class="resumen-section">
+        <h3 class="resumen-title">Resumen General</h3>
+        <hr class="resumen-divider">
+        <p class="resumen-sub">Información y análisis general de las actividades realizadas.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleMetrica(el) {
+    el.classList.toggle('active');
+}
+</script>
+{% endblock %}

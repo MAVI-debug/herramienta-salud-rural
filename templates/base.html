@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TSR - Salud Rural{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='logo_tsr.ico') }}">
+</head>
+<body>
+    <div class="layout">
+        {% if session.usuario_id %}
+        <nav class="navbar">
+            <div class="nav-brand">
+                <img src="{{ url_for('static', filename='logo_tsr.ico') }}" alt="TSR" class="nav-logo">
+                <span class="nav-tsr">TSR</span>
+                <span class="nav-sub">Técnico en Salud Rural</span>
+            </div>
+            <div class="nav-right">
+                <div class="nav-user-info">
+                    <div class="nav-user-name">{{ session.nombre_responsable or 'Usuario' }}</div>
+                    <div class="nav-user-cargo">{{ session.cargo or 'Técnico' }}</div>
+                </div>
+                <div class="nav-avatar">
+                    {{ (session.nombre_responsable or 'U')[:1].upper() }}
+                </div>
+                <a href="{{ url_for('registrar_tsr') }}" class="nav-admin-link" title="Registrar TSR">➕</a>
+                <span class="nav-divider"></span>
+                <a href="{{ url_for('logout') }}" class="nav-logout">Cerrar sesión</a>
+            </div>
+        </nav>
+        {% endif %}
+
+        <main class="contenido">
+            {% with mensajes = get_flashed_messages(with_categories=true) %}
+                {% for categoria, msg in mensajes %}
+                <div class="alerta alerta-{{ categoria }}">{{ msg }}</div>
+                {% endfor %}
+            {% endwith %}
+
+            {% block contenido %}{% endblock %}
+        </main>
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

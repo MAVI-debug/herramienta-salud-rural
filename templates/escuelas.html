@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Escuelas — TSR{% endblock %}
+{% block contenido %}
+<div class="pagina-escuelas">
+    <a href="/dashboard" class="btn-retorno">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        Volver al Panel
+    </a>
+
+    <h2>Centros Educativos</h2>
+
+    {% if escuelas %}
+    <div class="escuelas-table-wrap">
+        <table class="tabla">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Nombre del Centro Educativo</th>
+                    <th>Tipo</th>
+                    <th>Servicio de Salud</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in escuelas %}
+                <tr>
+                    <td>{{ e.codigo_centro }}</td>
+                    <td>{{ e.nombre_centro }}</td>
+                    <td>{{ e.tipo_centro }}</td>
+                    <td>{{ e.servicio_salud }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">No hay escuelas registradas aún.</p>
+    {% endif %}
+</div>
+{% endblock %}
