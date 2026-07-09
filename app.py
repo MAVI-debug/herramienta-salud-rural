@@ -87,6 +87,7 @@ def login():
             "FROM usuarios WHERE usuario = %s",
             (usuario,)
         )
+        print("DEBUG LOGIN fila:", fila)
 
         if fila and verificar_contrasena(fila["contrasena_hash"], contrasena):
             session.permanent = True
