@@ -61,7 +61,10 @@ def execute(sql, params=None):
 
 def fetchone(sql, params=None):
     cur = execute(sql, params)
-    return cur.fetchone()
+    row = cur.fetchone()
+    if _is_pg():
+        cur.close()
+    return row
 
 
 def fetchall(sql, params=None):
