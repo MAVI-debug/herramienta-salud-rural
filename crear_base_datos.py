@@ -32,29 +32,30 @@ def inicializar_bd(ruta_db="salud_rural.db", crear_usuario_demo=False):
     # 2. ESCUELAS / CENTROS EDUCATIVOS
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS escuelas (
-            codigo_centro TEXT PRIMARY KEY,
+            codigo_centro TEXT NOT NULL,
+            usuario_id    INTEGER NOT NULL,
             nombre_centro TEXT NOT NULL,
             tipo_centro   TEXT CHECK(tipo_centro IN ('PÚBLICO', 'PRIVADO')) NOT NULL,
-            servicio_salud TEXT NOT NULL
+            servicio_salud TEXT NOT NULL,
+            PRIMARY KEY (codigo_centro, usuario_id),
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
         )
     """)
 
     # 3. ESTUDIANTES
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS estudiantes (
-            cui              TEXT PRIMARY KEY,
+            cui              TEXT NOT NULL,
+            usuario_id       INTEGER NOT NULL,
             nombre_completo  TEXT NOT NULL,
             sexo             TEXT CHECK(sexo IN ('Femenino', 'Masculino')) NOT NULL,
             fecha_nacimiento TEXT NOT NULL,
             grado            TEXT DEFAULT '',
-            seccion          TEXT DEFAULT ''
+            seccion          TEXT DEFAULT '',
+            PRIMARY KEY (cui, usuario_id),
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
         )
     """)
-    for col in ("grado", "seccion"):
-        try:
-            cursor.execute(f"ALTER TABLE estudiantes ADD COLUMN {col} TEXT DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass
 
     # 4. REGISTROS DE SALUD
     cursor.execute("""
@@ -67,10 +68,10 @@ def inicializar_bd(ruta_db="salud_rural.db", crear_usuario_demo=False):
             fecha_aplicacion  TEXT NOT NULL,
             fecha_corte       TEXT NOT NULL DEFAULT '31/03/2026',
             edad_calculo      INTEGER DEFAULT NULL,
-            usuario_id        INTEGER,
-            FOREIGN KEY (cui_estudiante) REFERENCES estudiantes(cui)
+            usuario_id        INTEGER NOT NULL,
+            FOREIGN KEY (cui_estudiante, usuario_id) REFERENCES estudiantes(cui, usuario_id)
                 ON DELETE SET NULL ON UPDATE CASCADE,
-            FOREIGN KEY (codigo_centro) REFERENCES escuelas(codigo_centro)
+            FOREIGN KEY (codigo_centro, usuario_id) REFERENCES escuelas(codigo_centro, usuario_id)
                 ON DELETE CASCADE ON UPDATE CASCADE,
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
                 ON DELETE SET NULL ON UPDATE CASCADE

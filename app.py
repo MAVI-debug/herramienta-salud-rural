@@ -173,6 +173,58 @@ def registrar_tsr():
 
 
 # ---------------------------------------------------------------------------
+# Ruta única — Cargar datos legacy a usuarios existentes
+# ---------------------------------------------------------------------------
+
+@app.route("/cargar-datos-iniciales")
+def cargar_datos_iniciales():
+    """
+    UNA SOLA VEZ: duplica las escuelas, estudiantes y jornadas existentes
+    (con usuario_id = 1 o nulo) para TODOS los usuarios actuales.
+    Los nuevos usuarios registrados después NO heredan estos datos.
+    """
+    usuarios = fetchall("SELECT id FROM usuarios")
+    if not usuarios:
+        return "No hay usuarios en el sistema.", 400
+
+    resultados = []
+    for u in usuarios:
+        uid = u["id"]
+        # Escuelas
+        execute("""
+            INSERT INTO escuelas (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud)
+            SELECT e.codigo_centro, %s, e.nombre_centro, e.tipo_centro, e.servicio_salud
+            FROM escuelas e
+            WHERE e.usuario_id IS NULL OR e.usuario_id = 1
+            GROUP BY e.codigo_centro
+            ON CONFLICT (codigo_centro, usuario_id) DO NOTHING
+        """, (uid,))
+        # Estudiantes
+        execute("""
+            INSERT INTO estudiantes (cui, usuario_id, nombre_completo, sexo, fecha_nacimiento, grado, seccion)
+            SELECT e.cui, %s, e.nombre_completo, e.sexo, e.fecha_nacimiento, e.grado, e.seccion
+            FROM estudiantes e
+            WHERE e.usuario_id IS NULL OR e.usuario_id = 1
+            GROUP BY e.cui
+            ON CONFLICT (cui, usuario_id) DO NOTHING
+        """, (uid,))
+        # Registros de salud
+        execute("""
+            INSERT INTO registros_salud
+                (cui_estudiante, codigo_centro, tipo_intervencion,
+                 campana, fecha_aplicacion, fecha_corte, edad_calculo, usuario_id)
+            SELECT r.cui_estudiante, r.codigo_centro, r.tipo_intervencion,
+                   r.campana, r.fecha_aplicacion, r.fecha_corte, r.edad_calculo, %s
+            FROM registros_salud r
+            WHERE r.usuario_id IS NULL OR r.usuario_id = 1
+        """, (uid,))
+        resultados.append(f"Usuario {uid} procesado")
+
+    commit()
+    return "<br>".join(resultados), 200
+
+
+# ---------------------------------------------------------------------------
 # Rutas — Perfil de Usuario
 # ---------------------------------------------------------------------------
 
@@ -264,26 +316,32 @@ def dashboard():
     if "usuario_id" not in session:
         return login_requerido()
 
+    uid = session["usuario_id"]
+
     total_escuelas = fetchone(
-        "SELECT COUNT(*) AS c FROM escuelas"
+        "SELECT COUNT(*) AS c FROM escuelas WHERE usuario_id = %s", (uid,)
     )["c"]
 
     total_estudiantes = fetchone("""
         SELECT COUNT(*) AS c FROM estudiantes e
-        WHERE EXISTS (
+        WHERE e.usuario_id = %s AND EXISTS (
             SELECT 1 FROM registros_salud r
             JOIN escuelas esc ON r.codigo_centro = esc.codigo_centro
+                AND r.usuario_id = esc.usuario_id
             WHERE r.cui_estudiante = e.cui
+              AND r.usuario_id = e.usuario_id
         )
-    """)["c"]
+    """, (uid, uid))["c"]
 
     escuelas = fetchall(
-        "SELECT codigo_centro, nombre_centro FROM escuelas ORDER BY nombre_centro"
+        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
+        (uid,)
     )
 
     # Desglose por tipo de escuela
     tipo_counts = fetchall(
-        "SELECT tipo_centro, COUNT(*) AS c FROM escuelas GROUP BY tipo_centro"
+        "SELECT tipo_centro, COUNT(*) AS c FROM escuelas WHERE usuario_id = %s GROUP BY tipo_centro",
+        (uid,)
     )
     desglose_tipos = {r["tipo_centro"]: r["c"] for r in tipo_counts}
 
@@ -291,17 +349,19 @@ def dashboard():
     mayor_poblacion = fetchone("""
         SELECT e.nombre_centro, COUNT(*) AS c
         FROM registros_salud r
-        JOIN estudiantes s ON r.cui_estudiante = s.cui
-        JOIN escuelas e ON r.codigo_centro = e.codigo_centro
-        GROUP BY e.nombre_centro, e.codigo_centro
+        JOIN estudiantes s ON r.cui_estudiante = s.cui AND r.usuario_id = s.usuario_id
+        JOIN escuelas e ON r.codigo_centro = e.codigo_centro AND r.usuario_id = e.usuario_id
+        WHERE r.usuario_id = %s
+        GROUP BY e.nombre_centro, e.codigo_centro, e.usuario_id
         ORDER BY c DESC
         LIMIT 1
-    """)
+    """, (uid,))
     nombre_mayor = mayor_poblacion["nombre_centro"] if mayor_poblacion else "—"
 
     # Distribución por sexo
     sexo_counts = fetchall(
-        "SELECT sexo, COUNT(*) AS c FROM estudiantes GROUP BY sexo"
+        "SELECT sexo, COUNT(*) AS c FROM estudiantes WHERE usuario_id = %s GROUP BY sexo",
+        (uid,)
     )
     total_m = next((r["c"] for r in sexo_counts if r["sexo"] == "Masculino"), 0)
     total_f = next((r["c"] for r in sexo_counts if r["sexo"] == "Femenino"), 0)
@@ -315,7 +375,8 @@ def dashboard():
     # Alumnos en rango 6-14 años calculados desde fecha_corte
     en_rango = fetchone("""
         SELECT COUNT(*) AS c FROM estudiantes
-        WHERE (CAST(%s AS INTEGER) - CAST(substr(fecha_nacimiento,7,4) AS INTEGER)
+        WHERE usuario_id = %s
+          AND (CAST(%s AS INTEGER) - CAST(substr(fecha_nacimiento,7,4) AS INTEGER)
                - CASE
                    WHEN CAST(substr(fecha_nacimiento,4,2) AS INTEGER) > %s
                         OR (CAST(substr(fecha_nacimiento,4,2) AS INTEGER) = %s
@@ -323,7 +384,7 @@ def dashboard():
                    THEN 1 ELSE 0
                  END
               ) BETWEEN 6 AND 14
-    """, (anio_c, mes_c, mes_c, dia_c))["c"]
+    """, (uid, anio_c, mes_c, mes_c, dia_c))["c"]
     pct_rango = round(en_rango / total_estudiantes * 100, 1) if total_estudiantes else 0
 
     fecha_corte_str = fecha_corte.strftime("%d/%m/%Y")
@@ -351,8 +412,10 @@ def dashboard():
 def jornada_desparasitacion():
     if "usuario_id" not in session:
         return login_requerido()
+    uid = session["usuario_id"]
     escuelas = fetchall(
-        "SELECT codigo_centro, nombre_centro, tipo_centro FROM escuelas ORDER BY nombre_centro"
+        "SELECT codigo_centro, nombre_centro, tipo_centro FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
+        (uid,)
     )
     return render_template("jornada_desparasitacion.html", escuelas=escuelas)
 
@@ -361,8 +424,10 @@ def jornada_desparasitacion():
 def jornada_fluorizacion():
     if "usuario_id" not in session:
         return login_requerido()
+    uid = session["usuario_id"]
     escuelas = fetchall(
-        "SELECT codigo_centro, nombre_centro, tipo_centro FROM escuelas ORDER BY nombre_centro"
+        "SELECT codigo_centro, nombre_centro, tipo_centro FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
+        (uid,)
     )
     return render_template("jornada_fluorizacion.html", escuelas=escuelas)
 
@@ -375,9 +440,11 @@ def listar_escuelas():
     if "usuario_id" not in session:
         return login_requerido()
 
+    uid = session["usuario_id"]
     escuelas = fetchall(
         "SELECT codigo_centro, nombre_centro, tipo_centro, servicio_salud "
-        "FROM escuelas ORDER BY nombre_centro"
+        "FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
+        (uid,)
     )
 
     return render_template("escuelas.html", escuelas=escuelas)
@@ -395,10 +462,12 @@ def sisca_form():
     codigo_centro = request.args.get("codigo_centro", "").strip()
     tipo = request.args.get("tipo", "desparasitacion")
     escuela = None
+    uid = session["usuario_id"]
     if codigo_centro:
         escuela = fetchone(
             "SELECT codigo_centro, nombre_centro, tipo_centro, servicio_salud "
-            "FROM escuelas WHERE codigo_centro = %s", (codigo_centro,)
+            "FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
+            (codigo_centro, uid)
         )
 
     hoy = date.today()
@@ -421,10 +490,12 @@ def sisca_fluor_form():
 
     codigo_centro = request.args.get("codigo_centro", "").strip()
     escuela = None
+    uid = session["usuario_id"]
     if codigo_centro:
         escuela = fetchone(
             "SELECT codigo_centro, nombre_centro, servicio_salud "
-            "FROM escuelas WHERE codigo_centro = %s", (codigo_centro,)
+            "FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
+            (codigo_centro, uid)
         )
 
     hoy = date.today()
@@ -472,9 +543,10 @@ def generar_sigsa22():
     else:
         fc = date.today()
 
+    uid = session["usuario_id"]
     escuela = fetchone(
-        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s",
-        (codigo_centro,)
+        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
+        (codigo_centro, uid)
     )
     if not escuela:
         flash("Escuela no encontrada.", "danger")
@@ -486,10 +558,10 @@ def generar_sigsa22():
         SELECT e.cui, e.nombre_completo, e.sexo, e.fecha_nacimiento,
                e.grado, e.seccion
         FROM registros_salud r
-        JOIN estudiantes e ON r.cui_estudiante = e.cui
-        WHERE r.codigo_centro = %s
-        GROUP BY e.cui
-    """, (codigo_centro,))
+        JOIN estudiantes e ON r.cui_estudiante = e.cui AND r.usuario_id = e.usuario_id
+        WHERE r.codigo_centro = %s AND r.usuario_id = %s
+        GROUP BY e.cui, e.usuario_id
+    """, (codigo_centro, uid))
 
     if not registros:
         flash("No hay estudiantes registrados.", "warning")
@@ -626,9 +698,10 @@ def procesar_sisca():
                    area_salud=area_salud, distrito_salud=distrito_salud)
 
     # ── Consultar escuela ─────────────────────────────────────────────────
+    uid = session["usuario_id"]
     escuela = fetchone(
-        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s",
-        (codigo_centro,)
+        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
+        (codigo_centro, uid)
     )
     if not escuela:
         flash("Escuela no encontrada en la base de datos.", "danger")
@@ -640,11 +713,11 @@ def procesar_sisca():
         SELECT e.cui, e.nombre_completo, e.sexo, e.fecha_nacimiento,
                e.grado, e.seccion
         FROM registros_salud r
-        JOIN estudiantes e ON r.cui_estudiante = e.cui
-        WHERE r.codigo_centro = %s
-        GROUP BY e.cui
+        JOIN estudiantes e ON r.cui_estudiante = e.cui AND r.usuario_id = e.usuario_id
+        WHERE r.codigo_centro = %s AND r.usuario_id = %s
+        GROUP BY e.cui, e.usuario_id
         ORDER BY e.grado, e.seccion, e.nombre_completo
-    """, (codigo_centro,))
+    """, (codigo_centro, uid))
 
     if not registros:
         flash(f"No hay estudiantes registrados para «{nombre_escuela}».", "warning")
@@ -712,8 +785,10 @@ def procesar_sisca():
 # Helpers — Consolidado
 # ---------------------------------------------------------------------------
 
-def _obtener_fecha_corte():
-    fila = fetchone("SELECT fecha_corte FROM registros_salud LIMIT 1")
+def _obtener_fecha_corte(uid=None):
+    if uid is None:
+        uid = session.get("usuario_id", 0)
+    fila = fetchone("SELECT fecha_corte FROM registros_salud WHERE usuario_id = %s LIMIT 1", (uid,))
     if fila:
         try:
             partes = fila["fecha_corte"].split("/")
@@ -723,10 +798,13 @@ def _obtener_fecha_corte():
     return date.today()
 
 
-def _consolidado_data(fecha_corte):
+def _consolidado_data(fecha_corte, uid=None):
     """Retorna (matriz, escuelas_detalle, totales) para vista y exportación."""
+    if uid is None:
+        uid = session.get("usuario_id", 0)
     escuelas = fetchall(
-        "SELECT codigo_centro, nombre_centro FROM escuelas ORDER BY nombre_centro"
+        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
+        (uid,)
     )
 
     # Única consulta: evita N+1 por escuela
@@ -735,10 +813,11 @@ def _consolidado_data(fecha_corte):
                e.cui, e.nombre_completo, e.sexo, e.fecha_nacimiento,
                e.grado, e.seccion
         FROM registros_salud r
-        JOIN estudiantes e ON r.cui_estudiante = e.cui
-        GROUP BY e.cui, r.codigo_centro
+        JOIN estudiantes e ON r.cui_estudiante = e.cui AND r.usuario_id = e.usuario_id
+        WHERE r.usuario_id = %s
+        GROUP BY e.cui, e.usuario_id, r.codigo_centro
         ORDER BY r.codigo_centro
-    """)
+    """, (uid,))
 
     # Agrupar en Python por código de centro
     alumnos_por_centro = {}
@@ -871,9 +950,10 @@ def exportar_escuela(codigo_centro):
     else:
         fecha_corte = date.today()
 
+    uid = session["usuario_id"]
     escuela = fetchone(
-        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s",
-        (codigo_centro,)
+        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
+        (codigo_centro, uid)
     )
     if not escuela:
         flash("Escuela no encontrada.", "danger")
@@ -883,10 +963,10 @@ def exportar_escuela(codigo_centro):
         SELECT e.cui, e.nombre_completo, e.sexo, e.fecha_nacimiento,
                e.grado, e.seccion
         FROM registros_salud r
-        JOIN estudiantes e ON r.cui_estudiante = e.cui
-        WHERE r.codigo_centro = %s
-        GROUP BY e.cui
-    """, (codigo_centro,))
+        JOIN estudiantes e ON r.cui_estudiante = e.cui AND r.usuario_id = e.usuario_id
+        WHERE r.codigo_centro = %s AND r.usuario_id = %s
+        GROUP BY e.cui, e.usuario_id
+    """, (codigo_centro, uid))
 
     alumnos = []
     for r in registros:
@@ -952,7 +1032,14 @@ def exportar_consolidado_total():
 def eliminar_escuela(codigo_centro):
     if "usuario_id" not in session:
         return login_requerido()
-    execute("DELETE FROM escuelas WHERE codigo_centro = %s", (codigo_centro,))
+    uid = session["usuario_id"]
+    execute("DELETE FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
+            (codigo_centro, uid))
+    execute("DELETE FROM estudiantes WHERE usuario_id = %s AND cui IN ("
+            "SELECT cui_estudiante FROM registros_salud WHERE codigo_centro = %s AND usuario_id = %s"
+            ")", (uid, codigo_centro, uid))
+    execute("DELETE FROM registros_salud WHERE codigo_centro = %s AND usuario_id = %s",
+            (codigo_centro, uid))
     commit()
     flash(f"Escuela {codigo_centro} eliminada.", "info")
     return redirect(url_for("consolidado"))
@@ -1016,12 +1103,13 @@ def cargar_pdf_consolidado():
             datos_escuela = {"codigo": codigo, "nombre": nombre_escuela, "tipo": "PÚBLICO"}
             print("ESCUELA DETECTADA:", datos_escuela)
 
+            uid = session["usuario_id"]
             execute("""
                 INSERT INTO escuelas
-                    (codigo_centro, nombre_centro, tipo_centro, servicio_salud)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (codigo_centro) DO NOTHING
-            """, (codigo, nombre_escuela, "PÚBLICO", ""))
+                    (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (codigo_centro, usuario_id) DO NOTHING
+            """, (codigo, uid, nombre_escuela, "PÚBLICO", ""))
 
             contador = 0
             for a in alumnos:
@@ -1037,21 +1125,21 @@ def cargar_pdf_consolidado():
                 sexo_db = "Femenino" if gen == "F" else "Masculino"
                 execute("""
                     INSERT INTO estudiantes
-                        (cui, nombre_completo, sexo, fecha_nacimiento, grado, seccion)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (cui) DO NOTHING
-                """, (cui, nombre_completo, sexo_db, fecha_nac,
+                        (cui, usuario_id, nombre_completo, sexo, fecha_nacimiento, grado, seccion)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (cui, usuario_id) DO NOTHING
+                """, (cui, uid, nombre_completo, sexo_db, fecha_nac,
                       a.get("grado", ""), a.get("seccion", "")))
                 execute("""
-                    UPDATE estudiantes SET grado = %s, seccion = %s WHERE cui = %s
-                """, (a.get("grado", ""), a.get("seccion", ""), cui))
+                    UPDATE estudiantes SET grado = %s, seccion = %s WHERE cui = %s AND usuario_id = %s
+                """, (a.get("grado", ""), a.get("seccion", ""), cui, uid))
                 execute("""
                     INSERT INTO registros_salud
                         (cui_estudiante, codigo_centro, tipo_intervencion,
                          campana, fecha_aplicacion, fecha_corte, edad_calculo, usuario_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (cui, codigo, "Desparasitación", "Primera",
-                      date.today().isoformat(), fecha_corte_db, edad, session["usuario_id"]))
+                      date.today().isoformat(), fecha_corte_db, edad, uid))
                 contador += 1
 
             commit()

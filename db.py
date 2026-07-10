@@ -87,6 +87,90 @@ def commit():
 def _run_migrations_sqlite(conn):
     import sqlite3
 
+    # ── Migración silenciosa a PK compuesta con usuario_id ──────────────────
+    cur = conn.execute("PRAGMA table_info(escuelas)")
+    cols = [r[1] for r in cur.fetchall()]
+    if "usuario_id" not in cols:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            conn.executescript("""
+                CREATE TABLE escuelas_nueva (
+                    codigo_centro TEXT NOT NULL,
+                    usuario_id    INTEGER NOT NULL,
+                    nombre_centro TEXT NOT NULL,
+                    tipo_centro   TEXT CHECK(tipo_centro IN ('PÚBLICO','PRIVADO')) NOT NULL,
+                    servicio_salud TEXT NOT NULL,
+                    PRIMARY KEY (codigo_centro, usuario_id),
+                    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+                );
+                INSERT INTO escuelas_nueva
+                    (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud)
+                SELECT e.codigo_centro, u.id,
+                       e.nombre_centro, e.tipo_centro, e.servicio_salud
+                FROM escuelas e, usuarios u;
+                DROP TABLE escuelas;
+                ALTER TABLE escuelas_nueva RENAME TO escuelas;
+
+                CREATE TABLE estudiantes_nueva (
+                    cui              TEXT NOT NULL,
+                    usuario_id       INTEGER NOT NULL,
+                    nombre_completo  TEXT NOT NULL,
+                    sexo             TEXT CHECK(sexo IN ('Femenino','Masculino')) NOT NULL,
+                    fecha_nacimiento TEXT NOT NULL,
+                    grado            TEXT DEFAULT '',
+                    seccion          TEXT DEFAULT '',
+                    PRIMARY KEY (cui, usuario_id),
+                    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+                );
+                INSERT INTO estudiantes_nueva
+                    (cui, usuario_id, nombre_completo, sexo, fecha_nacimiento, grado, seccion)
+                SELECT e.cui, u.id,
+                       e.nombre_completo, e.sexo, e.fecha_nacimiento,
+                       COALESCE(e.grado, ''), COALESCE(e.seccion, '')
+                FROM estudiantes e, usuarios u;
+                DROP TABLE estudiantes;
+                ALTER TABLE estudiantes_nueva RENAME TO estudiantes;
+
+                CREATE TABLE registros_salud_nueva (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cui_estudiante    TEXT,
+                    codigo_centro     TEXT,
+                    tipo_intervencion TEXT CHECK(tipo_intervencion IN ('Desparasitación','Fluorización')) NOT NULL,
+                    campana           TEXT CHECK(campana IN ('Primera','Segunda')) NOT NULL,
+                    fecha_aplicacion  TEXT NOT NULL,
+                    fecha_corte       TEXT NOT NULL DEFAULT '31/03/2026',
+                    edad_calculo      INTEGER DEFAULT NULL,
+                    usuario_id        INTEGER NOT NULL,
+                    FOREIGN KEY (cui_estudiante, usuario_id) REFERENCES estudiantes(cui, usuario_id)
+                        ON DELETE SET NULL ON UPDATE CASCADE,
+                    FOREIGN KEY (codigo_centro, usuario_id) REFERENCES escuelas(codigo_centro, usuario_id)
+                        ON DELETE CASCADE ON UPDATE CASCADE,
+                    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+                        ON DELETE SET NULL ON UPDATE CASCADE
+                );
+                INSERT INTO registros_salud_nueva
+                    (cui_estudiante, codigo_centro, tipo_intervencion,
+                     campana, fecha_aplicacion, fecha_corte, edad_calculo, usuario_id)
+                SELECT r.cui_estudiante, r.codigo_centro, r.tipo_intervencion,
+                       r.campana, r.fecha_aplicacion,
+                       COALESCE(r.fecha_corte, '31/03/2026'), r.edad_calculo, u.id
+                FROM registros_salud r, usuarios u;
+                DROP TABLE registros_salud;
+                ALTER TABLE registros_salud_nueva RENAME TO registros_salud;
+
+                CREATE INDEX IF NOT EXISTS idx_estudiantes_sexo ON estudiantes(sexo);
+                CREATE INDEX IF NOT EXISTS idx_estudiantes_fecha_nacimiento ON estudiantes(fecha_nacimiento);
+                CREATE INDEX IF NOT EXISTS idx_registros_cui ON registros_salud(cui_estudiante);
+                CREATE INDEX IF NOT EXISTS idx_registros_centro ON registros_salud(codigo_centro);
+                CREATE INDEX IF NOT EXISTS idx_registros_intervencion ON registros_salud(tipo_intervencion, campana);
+                CREATE INDEX IF NOT EXISTS idx_registros_usuario ON registros_salud(usuario_id);
+            """)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.execute("PRAGMA foreign_keys=ON")
+
     for col_def in [
         "ALTER TABLE registros_salud ADD COLUMN fecha_corte TEXT NOT NULL DEFAULT '31/03/2026'",
         "ALTER TABLE estudiantes ADD COLUMN grado TEXT DEFAULT ''",
@@ -101,6 +185,56 @@ def _run_migrations_sqlite(conn):
 
 def _run_migrations_pg(conn):
     cur = conn.cursor()
+
+    # ── Migración a PK compuesta con usuario_id ────────────────────────────
+    try:
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name='escuelas' AND column_name='usuario_id'
+        """)
+        if not cur.fetchone():
+            cur.execute("ALTER TABLE escuelas ADD COLUMN usuario_id INTEGER NOT NULL DEFAULT 1")
+            cur.execute("ALTER TABLE escuelas DROP CONSTRAINT escuelas_pkey CASCADE")
+            cur.execute("ALTER TABLE escuelas ADD PRIMARY KEY (codigo_centro, usuario_id)")
+            cur.execute("""
+                INSERT INTO escuelas (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud)
+                SELECT e.codigo_centro, u.id, e.nombre_centro, e.tipo_centro, e.servicio_salud
+                FROM escuelas e, usuarios u
+                WHERE e.usuario_id = 1 AND u.id != 1
+                ON CONFLICT (codigo_centro, usuario_id) DO NOTHING
+            """)
+            cur.execute("ALTER TABLE escuelas ALTER COLUMN usuario_id SET NOT NULL")
+
+            cur.execute("ALTER TABLE estudiantes ADD COLUMN usuario_id INTEGER NOT NULL DEFAULT 1")
+            cur.execute("ALTER TABLE estudiantes DROP CONSTRAINT estudiantes_pkey CASCADE")
+            cur.execute("ALTER TABLE estudiantes ADD PRIMARY KEY (cui, usuario_id)")
+            cur.execute("""
+                INSERT INTO estudiantes (cui, usuario_id, nombre_completo, sexo, fecha_nacimiento, grado, seccion)
+                SELECT e.cui, u.id, e.nombre_completo, e.sexo, e.fecha_nacimiento, e.grado, e.seccion
+                FROM estudiantes e, usuarios u
+                WHERE e.usuario_id = 1 AND u.id != 1
+                ON CONFLICT (cui, usuario_id) DO NOTHING
+            """)
+            cur.execute("ALTER TABLE estudiantes ALTER COLUMN usuario_id SET NOT NULL")
+
+            # registros_salud: update NULLs to default user, then duplicate
+            cur.execute("""
+                INSERT INTO registros_salud (cui_estudiante, codigo_centro, tipo_intervencion,
+                    campana, fecha_aplicacion, fecha_corte, edad_calculo, usuario_id)
+                SELECT r.cui_estudiante, r.codigo_centro, r.tipo_intervencion,
+                    r.campana, r.fecha_aplicacion,
+                    COALESCE(r.fecha_corte, '31/03/2026'), r.edad_calculo, u.id
+                FROM registros_salud r, usuarios u
+                WHERE (r.usuario_id IS NULL OR r.usuario_id = 1) AND u.id != 1
+            """)
+            cur.execute("""
+                UPDATE registros_salud SET usuario_id = 1
+                WHERE usuario_id IS NULL
+            """)
+    except Exception:
+        conn.rollback()
+        raise
+
     for col_def in [
         "ALTER TABLE registros_salud ADD COLUMN IF NOT EXISTS fecha_corte TEXT NOT NULL DEFAULT '31/03/2026'",
         "ALTER TABLE estudiantes ADD COLUMN IF NOT EXISTS grado TEXT DEFAULT ''",
