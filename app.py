@@ -945,7 +945,8 @@ def cargar_pdf_consolidado():
                 cui = a.get("cui", "")
                 fecha_nac = a.get("fecha_nac", "")
                 if not cui:
-                    continue
+                    raw = f"{nombre_completo}{fecha_nac}{a.get('grado', '')}{a.get('seccion', '')}"
+                    cui = f"TMP-{hashlib.sha256(raw.encode()).hexdigest()[:12].upper()}"
                 edad = sisca_logic.calcular_edad_a_fecha_corte(dia, mes, anio, fc)
                 sexo_db = "Femenino" if gen == "F" else "Masculino"
                 execute("""
