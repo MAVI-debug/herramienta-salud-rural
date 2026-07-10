@@ -908,6 +908,9 @@ def cargar_pdf_consolidado():
             if not codigo:
                 codigo = f"SIN_CODIGO_{total_escuelas + 1}"
 
+            datos_escuela = {"codigo": codigo, "nombre": nombre_escuela, "tipo": "PÚBLICO"}
+            print("ESCUELA DETECTADA:", datos_escuela)
+
             execute("""
                 INSERT INTO escuelas
                     (codigo_centro, nombre_centro, tipo_centro, servicio_salud)
