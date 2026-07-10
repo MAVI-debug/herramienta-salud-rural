@@ -169,15 +169,15 @@ body {
 .banner-bienvenida h1 {
     font-size: 1.7rem;
     font-weight: 700;
-    color: #fff;
+    color: #07223d;
     letter-spacing: 0.3px;
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 .banner-bienvenida p {
     font-size: 0.95rem;
-    color: rgba(255, 255, 255, 0.85);
+    color: #07223d;
     margin-top: 4px;
-    font-weight: 400;
+    font-weight: 500;
 }
 
 /* ─── Tarjetas de Métricas ──────────────────── */
@@ -214,6 +214,25 @@ body {
 .metrica-estudiantes {
     background: linear-gradient(135deg, var(--color-cyan-bright), var(--color-teal-mid));
     border-bottom: 4px solid rgba(255, 255, 255, 0.15);
+}
+.metrica-estudiantes .metrica-num,
+.metrica-estudiantes .metrica-label {
+    color: #07223d;
+}
+.metrica-estudiantes .metrica-label {
+    opacity: 0.75;
+}
+.metrica-estudiantes .metrica-expand-inner {
+    color: #07223d;
+}
+.metrica-estudiantes .metrica-expand-inner .stat-label {
+    color: rgba(7, 34, 61, 0.55);
+}
+.metrica-estudiantes .metrica-expand-inner .stat-highlight {
+    color: #07223d;
+}
+.metrica-estudiantes .metrica-expand-inner .stat-mint {
+    color: #1a5a4a;
 }
 .metrica-icono {
     font-size: 2.4rem;
@@ -335,6 +354,10 @@ body {
 .btn-fluorizacion {
     background: linear-gradient(135deg, var(--color-cyan-bright), var(--color-teal-mid));
     box-shadow: 0 4px 14px rgba(9, 209, 199, 0.20);
+    color: #07223d;
+}
+.btn-fluorizacion .accion-texto {
+    color: #07223d;
 }
 .btn-escuelas {
     background: linear-gradient(135deg, var(--color-card-dark), #094a58);

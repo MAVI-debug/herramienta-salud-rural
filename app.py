@@ -184,9 +184,14 @@ def dashboard():
         "SELECT COUNT(*) AS c FROM escuelas"
     )["c"]
 
-    total_estudiantes = fetchone(
-        "SELECT COUNT(*) AS c FROM estudiantes"
-    )["c"]
+    total_estudiantes = fetchone("""
+        SELECT COUNT(*) AS c FROM estudiantes e
+        WHERE EXISTS (
+            SELECT 1 FROM registros_salud r
+            JOIN escuelas esc ON r.codigo_centro = esc.codigo_centro
+            WHERE r.cui_estudiante = e.cui
+        )
+    """)["c"]
 
     escuelas = fetchall(
         "SELECT codigo_centro, nombre_centro FROM escuelas ORDER BY nombre_centro"
