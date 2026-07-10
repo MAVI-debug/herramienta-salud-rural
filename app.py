@@ -909,9 +909,10 @@ def cargar_pdf_consolidado():
                 codigo = f"SIN_CODIGO_{total_escuelas + 1}"
 
             execute("""
-                INSERT OR IGNORE INTO escuelas
+                INSERT INTO escuelas
                     (codigo_centro, nombre_centro, tipo_centro, servicio_salud)
                 VALUES (%s, %s, %s, %s)
+                ON CONFLICT (codigo_centro) DO NOTHING
             """, (codigo, nombre_escuela, "PÚBLICO", ""))
 
             contador = 0
@@ -926,9 +927,10 @@ def cargar_pdf_consolidado():
                 edad = sisca_logic.calcular_edad_a_fecha_corte(dia, mes, anio, fc)
                 sexo_db = "Femenino" if gen == "F" else "Masculino"
                 execute("""
-                    INSERT OR IGNORE INTO estudiantes
+                    INSERT INTO estudiantes
                         (cui, nombre_completo, sexo, fecha_nacimiento, grado, seccion)
                     VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (cui) DO NOTHING
                 """, (cui, nombre_completo, sexo_db, fecha_nac,
                       a.get("grado", ""), a.get("seccion", "")))
                 execute("""
