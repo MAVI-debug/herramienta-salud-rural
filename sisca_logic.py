@@ -276,7 +276,8 @@ def _rellenar_encabezado_sisca(ws_adelante, nombre_escuela: str, codigo_escuela:
                                 tipo_centro: str = None,
                                 area=None, distrito=None,
                                 servicio=None, responsable=None, cargo=None,
-                                fecha_reporte_str=None):
+                                fecha_reporte_str=None,
+                                jornada="Primera Jornada"):
     tipo = (tipo_centro or TIPO_CENTRO_DEFECTO).strip().upper()
     valores = {
         "C7":  area or "",
@@ -285,7 +286,8 @@ def _rellenar_encabezado_sisca(ws_adelante, nombre_escuela: str, codigo_escuela:
         "G9":  responsable or "",
         "S9":  cargo or "",
         "AI9": fecha_reporte_str or "",
-        "AE9": "X",
+        "AE9": "X" if jornada == "Primera Jornada" else "",
+        "AG9": "X" if jornada == "Segunda Jornada" else "",
         "E12": nombre_escuela.strip().upper(),
         "V12": codigo_escuela.strip().upper(),
     }
@@ -322,7 +324,8 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
                                  tipo_centro: str = None,
                                  responsable=None, cargo=None,
                                  area=None, distrito=None, servicio=None,
-                                 fecha_reporte_str=None) -> str:
+                                 fecha_reporte_str=None,
+                                 jornada="Primera Jornada") -> str:
     if not os.path.exists(ruta_plantilla):
         raise FileNotFoundError(
             f"No se encontró la plantilla legal en:\n{ruta_plantilla}")
@@ -336,7 +339,8 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
                                     area=area, distrito=distrito,
                                     servicio=servicio,
                                     responsable=responsable, cargo=cargo,
-                                    fecha_reporte_str=fecha_reporte_str)
+                                    fecha_reporte_str=fecha_reporte_str,
+                                    jornada=jornada)
         inicio = (idx - 1) * SISCA_ALUMNOS_POR_BLOQUE
         bloque = alumnos_aptos[inicio:inicio + SISCA_ALUMNOS_POR_BLOQUE]
         _rellenar_alumnos_pagina(ws_adelante, SISCA_FILA_INICIO_ADELANTE,

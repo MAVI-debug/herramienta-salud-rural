@@ -505,6 +505,7 @@ def procesar_sisca():
     tipo_centro = request.form.get("tipo_centro", "PÚBLICO").strip().upper()
     fecha_reporte = request.form.get("fecha_reporte", "").strip()
     fecha_corte_str = request.form.get("fecha_corte", "").strip()
+    jornada = request.form.get("jornada", "Primera Jornada").strip()
     tipo_intervencion = request.form.get("tipo_intervencion", "desparasitacion").strip()
 
     if not codigo_centro:
@@ -609,6 +610,7 @@ def procesar_sisca():
             area=area_salud, distrito=distrito_salud,
             servicio=servicio_salud,
             fecha_reporte_str=fecha_reporte if fecha_reporte else None,
+            jornada=jornada,
         )
     except Exception as e:
         flash(f"Error al generar la ficha SISCA: {e}", "danger")

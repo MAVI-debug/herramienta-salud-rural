@@ -50,6 +50,12 @@
             <option value="PRIVADO" {{ 'selected' if escuela and escuela.tipo_centro == 'PRIVADO' else '' }}>PRIVADO</option>
         </select>
 
+        <label for="jornada">Jornada <span style="color:var(--color-cyan-bright);">*</span></label>
+        <select name="jornada" id="jornada" required>
+            <option value="Primera Jornada" selected>Primera Jornada</option>
+            <option value="Segunda Jornada">Segunda Jornada</option>
+        </select>
+
         <label for="fecha_reporte">Fecha del Reporte</label>
         <input type="text" name="fecha_reporte" id="fecha_reporte"
                value="{{ now }}" placeholder="DD/MM/AAAA">
