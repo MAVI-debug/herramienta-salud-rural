@@ -331,7 +331,7 @@ def dashboard():
             WHERE r.cui_estudiante = e.cui
               AND r.usuario_id = e.usuario_id
         )
-    """, (uid, uid))["c"]
+    """, (uid,))["c"]
 
     escuelas = fetchall(
         "SELECT codigo_centro, nombre_centro FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
