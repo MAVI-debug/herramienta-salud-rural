@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Mi Perfil — TSR{% endblock %}
+{% block contenido %}
+<div class="registro-page">
+    <a href="/dashboard" class="btn-retorno" style="margin-bottom:0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        Volver al Panel
+    </a>
+
+    <div class="registro-card">
+        <div class="registro-header">
+            <div class="registro-icono">👤</div>
+            <h2>Mi Perfil</h2>
+            <p class="registro-sub">Actualiza tus datos personales.</p>
+        </div>
+        <form method="POST" class="registro-form">
+            <input type="hidden" name="form_type" value="actualizar_perfil">
+
+            <label for="nombre_completo">Nombre Completo</label>
+            <input type="text" name="nombre_completo" id="nombre_completo"
+                   value="{{ session.nombre_responsable }}" required>
+
+            <label for="usuario">Nombre de Usuario</label>
+            <input type="text" name="usuario" id="usuario"
+                   value="{{ session.usuario }}" required>
+
+            <label for="cargo">Cargo</label>
+            <input type="text" name="cargo" id="cargo"
+                   value="{{ session.cargo }}">
+
+            <label for="area_salud">Área de Salud</label>
+            <input type="text" name="area_salud" id="area_salud"
+                   value="{{ session.area_salud or '' }}">
+
+            <label for="distrito_salud">Distrito de Salud</label>
+            <input type="text" name="distrito_salud" id="distrito_salud"
+                   value="{{ session.distrito_salud or '' }}">
+
+            <button type="submit">Guardar Cambios</button>
+        </form>
+    </div>
+
+    <div class="registro-card" style="margin-top:0">
+        <div class="registro-header">
+            <div class="registro-icono">🔑</div>
+            <h2>Cambiar Contraseña</h2>
+            <p class="registro-sub">Ingresa tu contraseña actual y una nueva.</p>
+        </div>
+        <form method="POST" class="registro-form">
+            <input type="hidden" name="form_type" value="cambiar_contrasena">
+
+            <label for="contrasena_actual">Contraseña Actual</label>
+            <input type="password" name="contrasena_actual" id="contrasena_actual" placeholder="••••••••" required>
+
+            <label for="nueva_contrasena">Nueva Contraseña</label>
+            <input type="password" name="nueva_contrasena" id="nueva_contrasena" placeholder="Mín. 6 caracteres" required>
+
+            <label for="confirmar_contrasena">Confirmar Nueva Contraseña</label>
+            <input type="password" name="confirmar_contrasena" id="confirmar_contrasena" placeholder="Repite la contraseña" required>
+
+            <button type="submit">Cambiar Contraseña</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

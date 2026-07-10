@@ -173,6 +173,90 @@ def registrar_tsr():
 
 
 # ---------------------------------------------------------------------------
+# Rutas — Perfil de Usuario
+# ---------------------------------------------------------------------------
+
+@app.route("/perfil", methods=["GET", "POST"])
+def perfil():
+    if "usuario_id" not in session:
+        return login_requerido()
+
+    if request.method == "POST":
+        form_type = request.form.get("form_type", "")
+
+        if form_type == "actualizar_perfil":
+            nombre = request.form.get("nombre_completo", "").strip()
+            usuario = request.form.get("usuario", "").strip()
+            cargo = request.form.get("cargo", "").strip()
+            area_salud = request.form.get("area_salud", "").strip()
+            distrito_salud = request.form.get("distrito_salud", "").strip()
+
+            if not all([nombre, usuario]):
+                flash("El nombre y el usuario son obligatorios.", "danger")
+                return redirect(url_for("perfil"))
+
+            duplicado = fetchone(
+                "SELECT id FROM usuarios WHERE usuario = %s AND id != %s",
+                (usuario, session["usuario_id"])
+            )
+            if duplicado:
+                flash(f"El usuario «{usuario}» ya está en uso.", "danger")
+                return redirect(url_for("perfil"))
+
+            execute("""
+                UPDATE usuarios
+                SET nombre_responsable=%s, usuario=%s, cargo=%s,
+                    area_salud=%s, distrito_salud=%s
+                WHERE id=%s
+            """, (nombre, usuario, cargo, area_salud, distrito_salud, session["usuario_id"]))
+            commit()
+
+            session["nombre_responsable"] = nombre
+            session["usuario"] = usuario
+            session["cargo"] = cargo
+            session["area_salud"] = area_salud
+            session["distrito_salud"] = distrito_salud
+
+            flash("Perfil actualizado correctamente.", "success")
+            return redirect(url_for("perfil"))
+
+        elif form_type == "cambiar_contrasena":
+            actual = request.form.get("contrasena_actual", "")
+            nueva = request.form.get("nueva_contrasena", "")
+            confirmar = request.form.get("confirmar_contrasena", "")
+
+            if not all([actual, nueva, confirmar]):
+                flash("Completa todos los campos de contraseña.", "danger")
+                return redirect(url_for("perfil"))
+
+            if nueva != confirmar:
+                flash("Las contraseñas nuevas no coinciden.", "danger")
+                return redirect(url_for("perfil"))
+
+            if len(nueva) < 6:
+                flash("La contraseña debe tener al menos 6 caracteres.", "danger")
+                return redirect(url_for("perfil"))
+
+            fila = fetchone(
+                "SELECT contrasena_hash FROM usuarios WHERE id = %s",
+                (session["usuario_id"],)
+            )
+            if not fila or not verificar_contrasena(fila["contrasena_hash"], actual):
+                flash("La contraseña actual no es correcta.", "danger")
+                return redirect(url_for("perfil"))
+
+            execute(
+                "UPDATE usuarios SET contrasena_hash = %s WHERE id = %s",
+                (hash_contrasena(nueva), session["usuario_id"])
+            )
+            commit()
+            flash("Contraseña cambiada correctamente.", "success")
+            return redirect(url_for("perfil"))
+
+    return render_template("perfil.html")
+
+
+# ---------------------------------------------------------------------------
 # Rutas — Dashboard
 # ---------------------------------------------------------------------------
 @app.route("/dashboard")
