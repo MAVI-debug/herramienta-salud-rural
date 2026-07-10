@@ -41,6 +41,15 @@
             {% block contenido %}{% endblock %}
         </main>
     </div>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var alertas = document.querySelectorAll(".alerta");
+            alertas.forEach(function(el) {
+                setTimeout(function() { el.style.opacity = "0"; setTimeout(function() { el.remove(); }, 400); }, 5000);
+                el.addEventListener("click", function() { el.remove(); });
+            });
+        });
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

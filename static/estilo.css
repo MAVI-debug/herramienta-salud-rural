@@ -136,6 +136,8 @@ body {
     font-size: 0.85rem;
     font-weight: 500;
     backdrop-filter: blur(6px);
+    transition: opacity 0.4s ease;
+    cursor: pointer;
 }
 .alerta-danger  { background: rgba(231, 76, 60, 0.18); border-left: 4px solid var(--danger);  color: #f5b7b1; }
 .alerta-success { background: rgba(46, 204, 113, 0.18); border-left: 4px solid var(--success); color: #a9dfbf; }
