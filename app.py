@@ -176,7 +176,6 @@ def registrar_tsr():
 # Rutas — Dashboard
 # ---------------------------------------------------------------------------
 @app.route("/dashboard")
-@cache.cached(timeout=300, key_prefix=lambda: f"dash_{session.get('usuario_id', 'anon')}")
 def dashboard():
     if "usuario_id" not in session:
         return login_requerido()
@@ -314,7 +313,7 @@ def sisca_form():
         )
 
     hoy = date.today()
-    fc = date(2026, 3, 31)
+    fc = date.today()
     return render_template("sisca_form.html",
                            tipo=tipo,
                            escuela=dict(escuela) if escuela else None,
@@ -340,7 +339,7 @@ def sisca_fluor_form():
         )
 
     hoy = date.today()
-    fc = date(2026, 3, 31)
+    fc = date.today()
     return render_template("sisca_fluor.html",
                            escuela=dict(escuela) if escuela else None,
                            fecha_corte_iso=fc.isoformat())
@@ -380,9 +379,9 @@ def generar_sigsa22():
             try:
                 fc = datetime.strptime(fecha_corte_str, "%d/%m/%Y").date()
             except Exception:
-                fc = date(2026, 3, 31)
+                fc = date.today()
     else:
-        fc = date(2026, 3, 31)
+        fc = date.today()
 
     escuela = fetchone(
         "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s",
@@ -524,7 +523,7 @@ def procesar_sisca():
             flash("Fecha de corte inválida.", "danger")
             return redirect(url_for("dashboard"))
     else:
-        fecha_corte = date(2026, 3, 31)
+        fecha_corte = date.today()
 
     # ── Actualizar perfil del usuario ─────────────────────────────────────
     execute("""
@@ -630,7 +629,7 @@ def _obtener_fecha_corte():
             return date(int(partes[2]), int(partes[1]), int(partes[0]))
         except Exception:
             pass
-    return date(2026, 3, 31)
+    return date.today()
 
 
 def _consolidado_data(fecha_corte):
@@ -715,20 +714,25 @@ def _consolidado_data(fecha_corte):
 # ---------------------------------------------------------------------------
 
 @app.route("/consolidado")
-@cache.cached(timeout=600, key_prefix=lambda: f"consolidado_{request.args.get('fecha_corte', 'default')}")
 def consolidado():
     if "usuario_id" not in session:
         return login_requerido()
 
-    # Fecha de corte: query param (DD/MM/AAAA) > DB > default
+    # Fecha de corte: query param > session > today
     q_fc = request.args.get("fecha_corte", "").strip()
     if q_fc:
         try:
             fecha_corte = datetime.strptime(q_fc, "%d/%m/%Y").date()
+            session["fecha_corte"] = fecha_corte.strftime("%d/%m/%Y")
         except (ValueError, TypeError):
             fecha_corte = _obtener_fecha_corte()
+    elif "fecha_corte" in session:
+        try:
+            fecha_corte = datetime.strptime(session["fecha_corte"], "%d/%m/%Y").date()
+        except (ValueError, TypeError):
+            fecha_corte = date.today()
     else:
-        fecha_corte = _obtener_fecha_corte()
+        fecha_corte = date.today()
 
     matriz, escuelas_detalle, totales = _consolidado_data(fecha_corte)
 
@@ -768,8 +772,13 @@ def exportar_escuela(codigo_centro):
             fecha_corte = datetime.strptime(q_fc, "%d/%m/%Y").date()
         except (ValueError, TypeError):
             fecha_corte = _obtener_fecha_corte()
+    elif "fecha_corte" in session:
+        try:
+            fecha_corte = datetime.strptime(session["fecha_corte"], "%d/%m/%Y").date()
+        except (ValueError, TypeError):
+            fecha_corte = date.today()
     else:
-        fecha_corte = _obtener_fecha_corte()
+        fecha_corte = date.today()
 
     escuela = fetchone(
         "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s",
@@ -822,8 +831,13 @@ def exportar_consolidado_total():
             fecha_corte = datetime.strptime(q_fc, "%d/%m/%Y").date()
         except (ValueError, TypeError):
             fecha_corte = _obtener_fecha_corte()
+    elif "fecha_corte" in session:
+        try:
+            fecha_corte = datetime.strptime(session["fecha_corte"], "%d/%m/%Y").date()
+        except (ValueError, TypeError):
+            fecha_corte = date.today()
     else:
-        fecha_corte = _obtener_fecha_corte()
+        fecha_corte = date.today()
     matriz, escuelas_detalle, _ = _consolidado_data(fecha_corte)
 
     os.makedirs(SALIDA_SISCA_DIR, exist_ok=True)
@@ -873,11 +887,11 @@ def cargar_pdf_consolidado():
             fc = datetime.strptime(fecha_corte_str, "%d/%m/%Y").date()
             fecha_corte_db = fc.strftime("%d/%m/%Y")
         except (ValueError, TypeError):
-            fc = date(2026, 3, 31)
-            fecha_corte_db = "31/03/2026"
+            fc = date.today()
+            fecha_corte_db = fc.strftime("%d/%m/%Y")
     else:
-        fc = date(2026, 3, 31)
-        fecha_corte_db = "31/03/2026"
+        fc = date.today()
+        fecha_corte_db = fc.strftime("%d/%m/%Y")
 
     total_escuelas = 0
     errores = []

@@ -371,7 +371,7 @@ def procesar_pdf_sisca(ruta_pdf: str, ruta_plantilla: str, ruta_salida_dir: str,
         fecha_reporte_str = f"{hoy.day:02d}/{hoy.month:02d}/{hoy.year}"
 
     if fecha_corte is None:
-        fecha_corte = date(2026, 3, 31)
+        fecha_corte = date.today()
 
     alumnos = extraer_alumnos_pdf(ruta_pdf)
     if not alumnos:
