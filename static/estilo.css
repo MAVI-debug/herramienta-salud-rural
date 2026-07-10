@@ -983,6 +983,33 @@ body {
     -webkit-overflow-scrolling: touch;
 }
 
+/* Drag handle column */
+.drag-handle-th { width: 32px; min-width: 32px; }
+.drag-handle {
+    width: 32px;
+    min-width: 32px;
+    cursor: grab;
+    color: var(--texto-sec);
+    font-size: 1rem;
+    user-select: none;
+    text-align: center;
+    vertical-align: middle;
+}
+.drag-handle:active { cursor: grabbing; }
+.school-group {
+    transition: box-shadow 0.2s ease;
+}
+.school-group.sortable-chosen {
+    outline: 2px dashed var(--color-cyan-bright);
+    outline-offset: -2px;
+    border-radius: 8px;
+}
+.school-group.sortable-ghost {
+    opacity: 0.3;
+    background: rgba(9, 209, 199, 0.08);
+}
+.school-group.sortable-ghost td { border-bottom: none; }
+
 /* Main table */
 .consol-tabla {
     width: 100%;

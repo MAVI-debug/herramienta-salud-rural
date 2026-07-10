@@ -51,9 +51,10 @@
     {% if matriz %}
     <div class="consolidado-card consolidado-table-wrap">
         <div class="tabla-scroll">
-            <table class="tabla consol-tabla">
+            <table class="tabla consol-tabla" id="consol-table">
                 <thead>
                     <tr>
+                        <th rowspan="2" class="drag-handle-th"></th>
                         <th rowspan="2">#</th>
                         <th rowspan="2">Nombre de Escuela</th>
                         <th rowspan="2">Código</th>
@@ -75,8 +76,7 @@
                         <th>F</th><th>M</th><th>Total</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {% for m in matriz %}
+                {% for m in matriz %}
                     {% set ns = namespace(f=0, m=0) %}
                     {% for r in ['5_y_menos', '6_a_9', '10_a_14', '15_a_19'] %}
                     {% set ns.f = ns.f + m.get(r + '_f', 0) %}
@@ -85,7 +85,9 @@
                     {% set f_6_14 = m.get('6_a_9_f',0) + m.get('10_a_14_f',0) %}
                     {% set m_6_14 = m.get('6_a_9_m',0) + m.get('10_a_14_m',0) %}
                     {% set total_6_14 = f_6_14 + m_6_14 %}
+                <tbody class="school-group" data-id="{{ m.codigo }}">
                     <tr class="clickable" data-target="detalle-{{ loop.index }}">
+                        <td class="drag-handle">⠿</td>
                         <td>{{ loop.index }}</td>
                         <td class="col-escuela">{{ m.nombre }}</td>
                         <td>{{ m.codigo }}</td>
@@ -104,7 +106,7 @@
                         </td>
                     </tr>
                     <tr class="detalle-row" id="detalle-{{ loop.index }}">
-                        <td colspan="18">
+                        <td colspan="19">
                             <div class="detalle-content">
                                 <div class="detalle-toolbar">
                                     <strong>Listado nominal — {{ m.nombre }}</strong>
@@ -169,11 +171,11 @@
                             </div>
                         </td>
                     </tr>
-                    {% endfor %}
                 </tbody>
+                    {% endfor %}
                 <tfoot>
                     <tr class="total-row">
-                        <td colspan="3"><strong>TOTALES</strong></td>
+                        <td colspan="4"><strong>TOTALES</strong></td>
                         <td>{{ totales['5_y_menos_f'] }}</td><td>{{ totales['5_y_menos_m'] }}</td>
                         <td>{{ totales['6_a_9_f'] }}</td><td>{{ totales['6_a_9_m'] }}</td>
                         <td>{{ totales['10_a_14_f'] }}</td><td>{{ totales['10_a_14_m'] }}</td>
@@ -266,5 +268,22 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+var consolTable = document.getElementById('consol-table');
+if (consolTable && typeof Sortable !== 'undefined') {
+    new Sortable(consolTable, {
+        handle: '.drag-handle',
+        items: 'tbody.school-group',
+        animation: 200,
+        direction: 'vertical',
+        onEnd: function () {
+            var groups = consolTable.querySelectorAll('tbody.school-group');
+            groups.forEach(function(g, idx) {
+                var numCell = g.querySelector('.clickable td:nth-child(2)');
+                if (numCell) numCell.textContent = idx + 1;
+            });
+        }
+    });
+}
 </script>
 {% endblock %}
