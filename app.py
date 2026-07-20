@@ -751,7 +751,6 @@ def procesar_sisca():
         JOIN estudiantes e ON r.cui_estudiante = e.cui AND r.usuario_id = e.usuario_id
         WHERE r.codigo_centro = %s AND r.usuario_id = %s
         GROUP BY e.cui, e.usuario_id
-        ORDER BY e.grado, e.seccion, e.nombre_completo
     """, (codigo_centro, uid))
 
     if not registros:
