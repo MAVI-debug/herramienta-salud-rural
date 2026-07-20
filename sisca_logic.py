@@ -336,8 +336,6 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
             f"No se encontró la plantilla legal en:\n{ruta_plantilla}")
     wb = openpyxl.load_workbook(ruta_plantilla)
 
-    alumnos_aptos = sorted(alumnos_aptos,
-                           key=lambda a: (a.get("grado", "") or "", a.get("seccion", "") or ""))
     total_bloques = max(1, math.ceil(len(alumnos_aptos) / SISCA_ALUMNOS_POR_BLOQUE))
     bloques_hojas = [_duplicar_bloque_sisca(wb, i) for i in range(1, total_bloques + 1)]
 
