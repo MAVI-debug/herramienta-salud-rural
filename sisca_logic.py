@@ -306,7 +306,6 @@ def _rellenar_encabezado_sisca(ws_adelante, nombre_escuela: str, codigo_escuela:
         _aplicar_fuente_encabezado(ws_adelante[direccion])
 
 def _rellenar_alumnos_pagina(ws, fila_inicio: int, alumnos_pagina: list):
-    # Limpiar todas las filas posibles (con margen para saltos)
     max_filas = SISCA_FILAS_POR_HOJA + len(alumnos_pagina)
     for i in range(max_filas):
         fila = fila_inicio + i
@@ -316,14 +315,25 @@ def _rellenar_alumnos_pagina(ws, fila_inicio: int, alumnos_pagina: list):
     offset = 0
     prev_grado = prev_seccion = None
     for i, alumno in enumerate(alumnos_pagina):
-        grado = alumno.get("grado", "")
-        seccion = alumno.get("seccion", "")
+        grado = alumno.get("grado", "").strip()
+        seccion = alumno.get("seccion", "").strip()
         if (grado, seccion) != (prev_grado, prev_seccion) and i > 0:
             offset += 1
+            fila_enc = fila_inicio + i + offset - 1
+            etiqueta = f"{grado} {seccion}".strip().upper() if grado else ""
+            if etiqueta:
+                ws.cell(fila_enc, 2, etiqueta)
+                ws.cell(fila_enc, 2).font = Font(name="Arial", size=10, bold=True,
+                                                  color="FF0000")
+                ws.cell(fila_enc, 2).alignment = Alignment(horizontal="center",
+                                                            vertical="center")
+                for col in (12, 13, 14, 15, 16, 17):
+                    ws.cell(fila_enc, col, None)
         prev_grado, prev_seccion = grado, seccion
         fila = fila_inicio + i + offset
         ws.cell(fila, 2, alumno["nombre"])
-        celda_cui = ws.cell(fila, 12, alumno["cui"])
+        cui_val = alumno["cui"]
+        celda_cui = ws.cell(fila, 12, "" if cui_val.startswith("TMP-") else cui_val)
         celda_cui.number_format = "@"
         if alumno["genero"] == "F":
             ws.cell(fila, 13, "X")
@@ -345,9 +355,6 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
         raise FileNotFoundError(
             f"No se encontró la plantilla legal en:\n{ruta_plantilla}")
     wb = openpyxl.load_workbook(ruta_plantilla)
-
-    # Ordenar por grado, sección, nombre
-    alumnos_aptos.sort(key=lambda a: (a.get("grado", ""), a.get("seccion", ""), a.get("nombre", "")))
 
     total_bloques = max(1, math.ceil(len(alumnos_aptos) / SISCA_ALUMNOS_POR_BLOQUE))
     bloques_hojas = [_duplicar_bloque_sisca(wb, i) for i in range(1, total_bloques + 1)]
