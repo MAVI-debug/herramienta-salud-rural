@@ -306,20 +306,21 @@ def _rellenar_encabezado_sisca(ws_adelante, nombre_escuela: str, codigo_escuela:
         _aplicar_fuente_encabezado(ws_adelante[direccion])
 
 def _rellenar_alumnos_pagina(ws, fila_inicio: int, alumnos_pagina: list):
-    max_filas = SISCA_FILAS_POR_HOJA + len(alumnos_pagina)
+    max_filas = SISCA_FILAS_POR_HOJA + len(alumnos_pagina) * 2
     for i in range(max_filas):
         fila = fila_inicio + i
-        for col in (2, 12, 13, 14, 15, 16, 17):
+        for col in range(1, 20):
             ws.cell(fila, col, None)
 
     offset = 0
     prev_grado = prev_seccion = None
-    for i, alumno in enumerate(alumnos_pagina):
+    for idx, alumno in enumerate(alumnos_pagina):
         grado = alumno.get("grado", "").strip()
         seccion = alumno.get("seccion", "").strip()
-        if (grado, seccion) != (prev_grado, prev_seccion) and i > 0:
-            offset += 1
-            fila_enc = fila_inicio + i + offset - 1
+        group = (grado, seccion)
+
+        if group != (prev_grado, prev_seccion):
+            fila_enc = fila_inicio + idx + offset
             etiqueta = f"{grado} {seccion}".strip().upper() if grado else ""
             if etiqueta:
                 ws.cell(fila_enc, 2, etiqueta)
@@ -327,10 +328,10 @@ def _rellenar_alumnos_pagina(ws, fila_inicio: int, alumnos_pagina: list):
                                                   color="FF0000")
                 ws.cell(fila_enc, 2).alignment = Alignment(horizontal="center",
                                                             vertical="center")
-                for col in (12, 13, 14, 15, 16, 17):
-                    ws.cell(fila_enc, col, None)
-        prev_grado, prev_seccion = grado, seccion
-        fila = fila_inicio + i + offset
+            offset += 1
+            prev_grado, prev_seccion = grado, seccion
+
+        fila = fila_inicio + idx + offset
         ws.cell(fila, 2, alumno["nombre"])
         cui_val = alumno["cui"]
         celda_cui = ws.cell(fila, 12, "" if cui_val.startswith("TMP-") else cui_val)
