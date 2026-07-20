@@ -358,9 +358,22 @@ def dashboard():
     """, (uid,))
     nombre_mayor = mayor_poblacion["nombre_centro"] if mayor_poblacion else "—"
 
-    # Distribución por sexo
+    # Helper: subconsulta EXISTS para estudiantes vinculados a escuelas activas
+    student_exists_join = """
+        AND EXISTS (
+            SELECT 1 FROM registros_salud r
+            JOIN escuelas esc ON r.codigo_centro = esc.codigo_centro
+                AND r.usuario_id = esc.usuario_id
+            WHERE r.cui_estudiante = e.cui
+              AND r.usuario_id = e.usuario_id
+        )
+    """
+
+    # Distribución por sexo (solo estudiantes con escuela activa)
     sexo_counts = fetchall(
-        "SELECT sexo, COUNT(*) AS c FROM estudiantes WHERE usuario_id = %s GROUP BY sexo",
+        "SELECT e.sexo, COUNT(*) AS c FROM estudiantes e"
+        " WHERE e.usuario_id = %s" + student_exists_join +
+        " GROUP BY e.sexo",
         (uid,)
     )
     total_m = next((r["c"] for r in sexo_counts if r["sexo"] == "Masculino"), 0)
@@ -372,20 +385,40 @@ def dashboard():
     mes_c = fecha_corte.month
     dia_c = fecha_corte.day
 
-    # Alumnos en rango 6-14 años calculados desde fecha_corte
+    # Alumnos en rango 6-14 años (solo con escuela activa)
     en_rango = fetchone("""
-        SELECT COUNT(*) AS c FROM estudiantes
-        WHERE usuario_id = %s
-          AND (CAST(%s AS INTEGER) - CAST(substr(fecha_nacimiento,7,4) AS INTEGER)
+        SELECT COUNT(*) AS c FROM estudiantes e
+        WHERE e.usuario_id = %s
+    """ + student_exists_join + """
+          AND (CAST(%s AS INTEGER) - CAST(substr(e.fecha_nacimiento,7,4) AS INTEGER)
                - CASE
-                   WHEN CAST(substr(fecha_nacimiento,4,2) AS INTEGER) > %s
-                        OR (CAST(substr(fecha_nacimiento,4,2) AS INTEGER) = %s
-                            AND CAST(substr(fecha_nacimiento,1,2) AS INTEGER) > %s)
+                   WHEN CAST(substr(e.fecha_nacimiento,4,2) AS INTEGER) > %s
+                        OR (CAST(substr(e.fecha_nacimiento,4,2) AS INTEGER) = %s
+                            AND CAST(substr(e.fecha_nacimiento,1,2) AS INTEGER) > %s)
                    THEN 1 ELSE 0
                  END
               ) BETWEEN 6 AND 14
     """, (uid, anio_c, mes_c, mes_c, dia_c))["c"]
     pct_rango = round(en_rango / total_estudiantes * 100, 1) if total_estudiantes else 0
+
+    # Desparasitados por jornada (vinculados a escuelas activas)
+    desp_1ra = fetchone("""
+        SELECT COUNT(DISTINCT r.cui_estudiante) AS c
+        FROM registros_salud r
+        JOIN escuelas e ON r.codigo_centro = e.codigo_centro AND r.usuario_id = e.usuario_id
+        WHERE r.usuario_id = %s
+          AND r.tipo_intervencion = 'Desparasitación'
+          AND r.campana = 'Primera'
+    """, (uid,))["c"]
+
+    desp_2da = fetchone("""
+        SELECT COUNT(DISTINCT r.cui_estudiante) AS c
+        FROM registros_salud r
+        JOIN escuelas e ON r.codigo_centro = e.codigo_centro AND r.usuario_id = e.usuario_id
+        WHERE r.usuario_id = %s
+          AND r.tipo_intervencion = 'Desparasitación'
+          AND r.campana = 'Segunda'
+    """, (uid,))["c"]
 
     fecha_corte_str = fecha_corte.strftime("%d/%m/%Y")
 
@@ -401,6 +434,8 @@ def dashboard():
         en_rango=en_rango,
         pct_rango=pct_rango,
         fecha_corte_str=fecha_corte_str,
+        desp_1ra=desp_1ra,
+        desp_2da=desp_2da,
     )
 
 

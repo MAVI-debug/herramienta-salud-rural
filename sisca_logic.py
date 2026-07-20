@@ -165,6 +165,11 @@ def extraer_metadatos_encabezado_pdf(ruta_pdf: str):
     codigo_raw = valor_tras_etiqueta("Código:", texto_top).upper()
     m = re.search(r"\d{1,2}-\d{1,2}-\d{2,5}-\d{1,3}", codigo_raw)
     codigo = m.group(0) if m else codigo_raw
+    jornada = valor_tras_etiqueta("Jornada:", texto_top).upper()
+    if "MATUTINA" in jornada:
+        nombre = f"{nombre} JM"
+    elif "VESPERTINA" in jornada:
+        nombre = f"{nombre} JV"
     return nombre, direccion, codigo
 
 def construir_nombre_escolar_completo(nombre: str, direccion: str) -> str:
@@ -301,12 +306,22 @@ def _rellenar_encabezado_sisca(ws_adelante, nombre_escuela: str, codigo_escuela:
         _aplicar_fuente_encabezado(ws_adelante[direccion])
 
 def _rellenar_alumnos_pagina(ws, fila_inicio: int, alumnos_pagina: list):
-    for i in range(SISCA_FILAS_POR_HOJA):
+    # Limpiar todas las filas posibles (con margen para saltos)
+    max_filas = SISCA_FILAS_POR_HOJA + len(alumnos_pagina)
+    for i in range(max_filas):
         fila = fila_inicio + i
         for col in (2, 12, 13, 14, 15, 16, 17):
             ws.cell(fila, col, None)
+
+    offset = 0
+    prev_grado = prev_seccion = None
     for i, alumno in enumerate(alumnos_pagina):
-        fila = fila_inicio + i
+        grado = alumno.get("grado", "")
+        seccion = alumno.get("seccion", "")
+        if (grado, seccion) != (prev_grado, prev_seccion) and i > 0:
+            offset += 1
+        prev_grado, prev_seccion = grado, seccion
+        fila = fila_inicio + i + offset
         ws.cell(fila, 2, alumno["nombre"])
         celda_cui = ws.cell(fila, 12, alumno["cui"])
         celda_cui.number_format = "@"
@@ -330,6 +345,10 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
         raise FileNotFoundError(
             f"No se encontró la plantilla legal en:\n{ruta_plantilla}")
     wb = openpyxl.load_workbook(ruta_plantilla)
+
+    # Ordenar por grado, sección, nombre
+    alumnos_aptos.sort(key=lambda a: (a.get("grado", ""), a.get("seccion", ""), a.get("nombre", "")))
+
     total_bloques = max(1, math.ceil(len(alumnos_aptos) / SISCA_ALUMNOS_POR_BLOQUE))
     bloques_hojas = [_duplicar_bloque_sisca(wb, i) for i in range(1, total_bloques + 1)]
 
@@ -417,6 +436,8 @@ def procesar_pdf_sisca(ruta_pdf: str, ruta_plantilla: str, ruta_salida_dir: str,
                 "dia": dia,
                 "mes": mes,
                 "anio": anio,
+                "grado": a.get("grado", ""),
+                "seccion": a.get("seccion", ""),
             })
 
     os.makedirs(ruta_salida_dir, exist_ok=True)

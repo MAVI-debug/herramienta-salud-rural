@@ -25,6 +25,10 @@
                     <div class="stat-row"><span class="stat-label">EORM</span><span class="stat-highlight">{{ eorm }}</span></div>
                     <div class="stat-row"><span class="stat-label">Párvulos</span><span class="stat-highlight">{{ parv }}</span></div>
                     <div class="stat-row"><span class="stat-label">Mayor población</span><span class="stat-mint">{{ nombre_mayor }}</span></div>
+                    <div class="stat-row" style="padding-top:4px;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px;">
+                        <span class="stat-label">Comunidades/Caseríos</span>
+                        <span class="stat-highlight">{{ total_escuelas }}</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -41,6 +45,14 @@
                     <div class="stat-row"><span class="stat-label">Niños (M)</span><span class="stat-highlight">{{ total_m }}</span></div>
                     <div class="stat-row"><span class="stat-label">Niñas (F)</span><span class="stat-highlight">{{ total_f }}</span></div>
                     <div class="stat-row"><span class="stat-label">Rango 6–14 años</span><span class="stat-mint">{{ en_rango }} ({{ pct_rango }}%)</span></div>
+                    <div class="stat-row" style="padding-top:4px;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px;">
+                        <span class="stat-label">Desparasitados 1ra Jornada</span>
+                        <span class="stat-highlight">{{ desp_1ra }}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Desparasitados 2da Jornada</span>
+                        <span class="stat-highlight">{{ desp_2da }}</span>
+                    </div>
                     <div class="stat-row" style="font-size:0.72rem;color:rgba(255,255,255,0.35);padding-top:4px;">
                         <span>Corte: {{ fecha_corte_str }}</span>
                     </div>
