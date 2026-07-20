@@ -313,7 +313,7 @@ def _rellenar_alumnos_pagina(ws, fila_inicio: int, alumnos_pagina: list):
     for i, alumno in enumerate(alumnos_pagina):
         fila = fila_inicio + i
         ws.cell(fila, 2, alumno["nombre"])
-        celda_cui = ws.cell(fila, 12, alumno["cui"])
+        celda_cui = ws.cell(fila, 12, "" if str(alumno["cui"]).startswith("TMP-") else alumno["cui"])
         celda_cui.number_format = "@"
         if alumno["genero"] == "F":
             ws.cell(fila, 13, "X")
