@@ -496,20 +496,42 @@ def sisca_form():
 
     codigo_centro = request.args.get("codigo_centro", "").strip()
     tipo = request.args.get("tipo", "desparasitacion")
-    escuela = None
     uid = session["usuario_id"]
-    if codigo_centro:
-        escuela = fetchone(
+
+    # ── Vista masiva: no se especificó escuela ──────────────────────────────
+    if not codigo_centro:
+        escuelas = fetchall(
             "SELECT codigo_centro, nombre_centro, tipo_centro, servicio_salud "
-            "FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
-            (codigo_centro, uid)
+            "FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
+            (uid,)
         )
+        if not escuelas:
+            flash("No hay escuelas registradas. Sube un PDF desde el Consolidado.", "warning")
+            return redirect(url_for("dashboard"))
+
+        today = date.today()
+        fc = date.today()
+        return render_template("sisca_masiva.html",
+                               tipo=tipo,
+                               escuelas=[dict(e) for e in escuelas],
+                               now=f"{today.day:02d}/{today.month:02d}/{today.year}",
+                               fecha_corte_iso=fc.isoformat())
+
+    # ── Vista individual: una escuela específica ────────────────────────────
+    escuela = fetchone(
+        "SELECT codigo_centro, nombre_centro, tipo_centro, servicio_salud "
+        "FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
+        (codigo_centro, uid)
+    )
+    if not escuela:
+        flash("Escuela no encontrada.", "danger")
+        return redirect(url_for("dashboard"))
 
     hoy = date.today()
     fc = date.today()
     return render_template("sisca_form.html",
                            tipo=tipo,
-                           escuela=dict(escuela) if escuela else None,
+                           escuela=dict(escuela),
                            now=f"{hoy.day:02d}/{hoy.month:02d}/{hoy.year}",
                            fecha_corte_iso=fc.isoformat())
 
