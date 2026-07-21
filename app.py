@@ -703,69 +703,23 @@ def generar_sigsa22():
     return response
 
 
-@app.route("/procesar_sisca", methods=["POST"])
-def procesar_sisca():
-    if "usuario_id" not in session:
-        return login_requerido()
-
-    # ── Leer campos del formulario ────────────────────────────────────────
-    codigo_centro = request.form.get("codigo_centro", "").strip()
-    responsable = request.form.get("responsable", "").strip()
-    cargo = request.form.get("cargo", "").strip()
-    area_salud = request.form.get("area_salud", "").strip()
-    distrito_salud = request.form.get("distrito_salud", "").strip()
-    servicio_salud = request.form.get("servicio_salud", "").strip()
-    tipo_centro = request.form.get("tipo_centro", "PÚBLICO").strip().upper()
-    fecha_reporte = request.form.get("fecha_reporte", "").strip()
-    fecha_corte_str = request.form.get("fecha_corte", "").strip()
-    jornada = request.form.get("jornada", "Primera Jornada").strip()
-    tipo_intervencion = request.form.get("tipo_intervencion", "desparasitacion").strip()
-
-    if not codigo_centro:
-        flash("No se seleccionó ninguna escuela.", "danger")
-        return redirect(url_for("dashboard"))
-
-    if not all([responsable, cargo, area_salud, distrito_salud, servicio_salud]):
-        flash("Completa todos los campos obligatorios del encabezado.", "danger")
-        return redirect(url_for("sisca_form", tipo=tipo_intervencion, codigo_centro=codigo_centro))
-
-    if not os.path.exists(PLANTILLA_PATH):
-        flash("No se encontró la plantilla SISCA en el servidor.", "danger")
-        return redirect(url_for("dashboard"))
-
-    # ── Parsear fecha de corte ────────────────────────────────────────────
-    if fecha_corte_str:
-        try:
-            partes = fecha_corte_str.split("-")
-            fecha_corte = date(int(partes[0]), int(partes[1]), int(partes[2]))
-        except Exception:
-            flash("Fecha de corte inválida.", "danger")
-            return redirect(url_for("dashboard"))
-    else:
-        fecha_corte = date.today()
-
-    # ── Actualizar perfil del usuario ─────────────────────────────────────
-    execute("""
-        UPDATE usuarios
-        SET nombre_responsable=%s, cargo=%s, area_salud=%s, distrito_salud=%s
-        WHERE id=%s
-    """, (responsable, cargo, area_salud, distrito_salud, session["usuario_id"]))
-    commit()
-    session.update(nombre_responsable=responsable, cargo=cargo,
-                   area_salud=area_salud, distrito_salud=distrito_salud)
-
-    # ── Consultar escuela ─────────────────────────────────────────────────
-    uid = session["usuario_id"]
+def _generar_sisca_para_escuela(codigo_centro, uid, fecha_corte, responsable,
+                                 cargo, area_salud, distrito_salud,
+                                 servicio_salud, tipo_centro, jornada,
+                                 fecha_reporte=None):
+    """
+    Genera una ficha SISCA para una escuela y retorna (ruta_salida, nombre_escuela, error_msg).
+    error_msg es None si todo salio bien.
+    """
     escuela = fetchone(
-        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
+        "SELECT codigo_centro, nombre_centro, tipo_centro FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
         (codigo_centro, uid)
     )
     if not escuela:
-        flash("Escuela no encontrada en la base de datos.", "danger")
-        return redirect(url_for("dashboard"))
-    nombre_escuela = escuela["nombre_centro"]
+        return None, None, f"Escuela no encontrada: {codigo_centro}"
 
-    # ── Consultar alumnos desde la BD ─────────────────────────────────────
+    nombre_escuela = escuela["nombre_centro"]
+    tipo_centro = escuela.get("tipo_centro", "PUBLICO") or "PUBLICO"
     registros = fetchall("""
         SELECT e.cui, e.nombre_completo, e.sexo, e.fecha_nacimiento,
                e.grado, e.seccion
@@ -777,12 +731,9 @@ def procesar_sisca():
     """, (codigo_centro, uid))
 
     if not registros:
-        flash(f"No hay estudiantes registrados para «{nombre_escuela}».", "warning")
-        return redirect(url_for("dashboard"))
+        return None, None, f"Sin estudiantes registrados para '{nombre_escuela}'."
 
-    # ── Formatear y filtrar alumnos aptos (6-14 años) ─────────────────
     aptos = []
-    total_alumnos = []
     for r in registros:
         try:
             dia, mes, anio = str(r["fecha_nacimiento"]).split("/")
@@ -793,7 +744,6 @@ def procesar_sisca():
         gen = "F" if r["sexo"].startswith("F") else "M"
         nombre = r["nombre_completo"]
         cui = r["cui"]
-        total_alumnos.append(True)
         if edad is not None and 6 <= edad <= 14:
             aptos.append({
                 "nombre": nombre,
@@ -805,10 +755,8 @@ def procesar_sisca():
             })
 
     if not aptos:
-        flash(f"No hay alumnos en edad apta (6-14 años) para «{nombre_escuela}».", "warning")
-        return redirect(url_for("dashboard"))
+        return None, None, f"No hay alumnos en edad apta (6-14 anos) para '{nombre_escuela}'."
 
-    # ── Generar ficha SISCA ──────────────────────────────────────────────
     anio_campana = fecha_corte.year
     os.makedirs(SALIDA_SISCA_DIR, exist_ok=True)
     import re
@@ -827,7 +775,75 @@ def procesar_sisca():
             jornada=jornada,
         )
     except Exception as e:
-        flash(f"Error al generar la ficha SISCA: {e}", "danger")
+        return None, None, f"Error al generar ficha para '{nombre_escuela}': {e}"
+
+    return ruta_salida, nombre_escuela, None
+
+
+# ---------------------------------------------------------------------------
+# Rutas — SISCA Individual
+# ---------------------------------------------------------------------------
+
+@app.route("/procesar_sisca", methods=["POST"])
+def procesar_sisca():
+    if "usuario_id" not in session:
+        return login_requerido()
+
+    # ── Leer campos del formulario ────────────────────────────────────────
+    codigo_centro = request.form.get("codigo_centro", "").strip()
+    responsable = request.form.get("responsable", "").strip()
+    cargo = request.form.get("cargo", "").strip()
+    area_salud = request.form.get("area_salud", "").strip()
+    distrito_salud = request.form.get("distrito_salud", "").strip()
+    servicio_salud = request.form.get("servicio_salud", "").strip()
+    tipo_centro = request.form.get("tipo_centro", "PUBLICO").strip().upper()
+    fecha_reporte = request.form.get("fecha_reporte", "").strip()
+    fecha_corte_str = request.form.get("fecha_corte", "").strip()
+    jornada = request.form.get("jornada", "Primera Jornada").strip()
+    tipo_intervencion = request.form.get("tipo_intervencion", "desparasitacion").strip()
+
+    if not codigo_centro:
+        flash("No se selecciono ninguna escuela.", "danger")
+        return redirect(url_for("dashboard"))
+
+    if not all([responsable, cargo, area_salud, distrito_salud, servicio_salud]):
+        flash("Completa todos los campos obligatorios del encabezado.", "danger")
+        return redirect(url_for("sisca_form", tipo=tipo_intervencion, codigo_centro=codigo_centro))
+
+    if not os.path.exists(PLANTILLA_PATH):
+        flash("No se encontro la plantilla SISCA en el servidor.", "danger")
+        return redirect(url_for("dashboard"))
+
+    # ── Parsear fecha de corte ────────────────────────────────────────────
+    if fecha_corte_str:
+        try:
+            partes = fecha_corte_str.split("-")
+            fecha_corte = date(int(partes[0]), int(partes[1]), int(partes[2]))
+        except Exception:
+            flash("Fecha de corte invalida.", "danger")
+            return redirect(url_for("dashboard"))
+    else:
+        fecha_corte = date.today()
+
+    # ── Actualizar perfil del usuario ─────────────────────────────────────
+    execute("""
+        UPDATE usuarios
+        SET nombre_responsable=%s, cargo=%s, area_salud=%s, distrito_salud=%s
+        WHERE id=%s
+    """, (responsable, cargo, area_salud, distrito_salud, session["usuario_id"]))
+    commit()
+    session.update(nombre_responsable=responsable, cargo=cargo,
+                   area_salud=area_salud, distrito_salud=distrito_salud)
+
+    uid = session["usuario_id"]
+    ruta_salida, nombre_escuela, error = _generar_sisca_para_escuela(
+        codigo_centro, uid, fecha_corte, responsable, cargo,
+        area_salud, distrito_salud, servicio_salud, "PUBLICO", jornada,
+        fecha_reporte=fecha_reporte if fecha_reporte else None,
+    )
+
+    if error:
+        flash(error, "danger" if "Error" in error else "warning")
         return redirect(url_for("dashboard"))
 
     return send_file(
@@ -835,6 +851,106 @@ def procesar_sisca():
         as_attachment=True,
         download_name=f"SISCA_{codigo_centro}_{tipo_intervencion}.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rutas — SISCA Masivo (ExportaciÃ³n MÃºltiple a ZIP)
+# ---------------------------------------------------------------------------
+
+@app.route("/procesar_sisca_masiva", methods=["POST"])
+def procesar_sisca_masiva():
+    if "usuario_id" not in session:
+        return login_requerido()
+
+    codigos = request.form.getlist("codigos_centro")
+    if not codigos:
+        flash("No se selecciono ninguna escuela.", "danger")
+        return redirect(url_for("sisca_form"))
+
+    responsable = request.form.get("responsable", "").strip()
+    cargo = request.form.get("cargo", "").strip()
+    area_salud = request.form.get("area_salud", "").strip()
+    distrito_salud = request.form.get("distrito_salud", "").strip()
+    servicio_salud = request.form.get("servicio_salud", "").strip()
+    tipo_centro = request.form.get("tipo_centro", "PUBLICO").strip().upper()
+    fecha_reporte = request.form.get("fecha_reporte", "").strip()
+    fecha_corte_str = request.form.get("fecha_corte", "").strip()
+    jornada = request.form.get("jornada", "Primera Jornada").strip()
+    tipo_intervencion = request.form.get("tipo_intervencion", "desparasitacion").strip()
+
+    if not all([responsable, cargo, area_salud, distrito_salud, servicio_salud]):
+        flash("Completa todos los campos obligatorios del encabezado.", "danger")
+        return redirect(url_for("sisca_form"))
+
+    if not os.path.exists(PLANTILLA_PATH):
+        flash("No se encontro la plantilla SISCA en el servidor.", "danger")
+        return redirect(url_for("dashboard"))
+
+    if fecha_corte_str:
+        try:
+            partes = fecha_corte_str.split("-")
+            fecha_corte = date(int(partes[0]), int(partes[1]), int(partes[2]))
+        except Exception:
+            flash("Fecha de corte invalida.", "danger")
+            return redirect(url_for("sisca_form"))
+    else:
+        fecha_corte = date.today()
+
+    # ── Actualizar perfil del usuario ─────────────────────────────────────
+    uid = session["usuario_id"]
+    execute("""
+        UPDATE usuarios
+        SET nombre_responsable=%s, cargo=%s, area_salud=%s, distrito_salud=%s
+        WHERE id=%s
+    """, (responsable, cargo, area_salud, distrito_salud, uid))
+    commit()
+    session.update(nombre_responsable=responsable, cargo=cargo,
+                   area_salud=area_salud, distrito_salud=distrito_salud)
+
+    # ── Generar ficha por cada escuela seleccionada ────────────────────────
+    rutas_generadas = []
+    errores = []
+    for codigo in codigos:
+        ruta, nombre, err = _generar_sisca_para_escuela(
+            codigo, uid, fecha_corte, responsable, cargo,
+            area_salud, distrito_salud, servicio_salud, "PUBLICO", jornada,
+            fecha_reporte=fecha_reporte if fecha_reporte else None,
+        )
+        if err:
+            errores.append(err)
+        else:
+            rutas_generadas.append(ruta)
+
+    if not rutas_generadas:
+        for e in errores:
+            flash(e, "danger")
+        return redirect(url_for("sisca_form"))
+
+    # ── Empaquetar en ZIP ─────────────────────────────────────────────────
+    import io, zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for ruta in rutas_generadas:
+            nombre_zip = os.path.basename(ruta)
+            zf.write(ruta, arcname=nombre_zip)
+
+    for ruta in rutas_generadas:
+        try:
+            os.remove(ruta)
+        except Exception:
+            pass
+
+    buf.seek(0)
+
+    for err in errores:
+        flash(err, "warning")
+
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"SISCA_masivo_{tipo_intervencion}.zip",
+        mimetype="application/zip",
     )
 
 

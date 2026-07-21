@@ -367,6 +367,111 @@ body {
     background: linear-gradient(135deg, #1a3a7a, #0d1f42);
     box-shadow: 0 4px 14px rgba(26, 58, 122, 0.20);
 }
+.btn-sisca {
+    background: linear-gradient(135deg, #6a3a8a, #3a1a5a);
+    box-shadow: 0 4px 14px rgba(106, 58, 138, 0.20);
+}
+
+/* ─── SISCA Masivo ───────────────────────────── */
+.masiva-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+}
+.check-all-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--color-cyan-bright);
+    user-select: none;
+}
+.check-all-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-cyan-bright);
+    cursor: pointer;
+}
+.masiva-count {
+    font-size: 0.82rem;
+    color: var(--texto-sec);
+}
+.masiva-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 18px;
+}
+.masiva-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.masiva-item:hover {
+    background: rgba(255,255,255,0.07);
+}
+.masiva-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-cyan-bright);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.masiva-nombre {
+    flex: 1;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+.masiva-codigo {
+    font-size: 0.78rem;
+    color: var(--texto-sec);
+    font-family: 'Courier New', monospace;
+}
+.btn-individual {
+    font-size: 0.75rem;
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--color-cyan-bright);
+    color: var(--color-cyan-bright);
+    text-decoration: none;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+.btn-individual:hover {
+    background: var(--color-cyan-bright);
+    color: #07223d;
+}
+.btn-masivo {
+    width: 100%;
+    padding: 14px 20px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #6a3a8a, #3a1a5a);
+    color: white;
+    font: bold 15px 'Inter', 'Segoe UI', sans-serif;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 14px rgba(106, 58, 138, 0.25);
+}
+.btn-masivo:hover:not(:disabled) {
+    transform: translateY(-3px);
+    filter: brightness(1.1);
+    box-shadow: 0 8px 24px rgba(106, 58, 138, 0.35);
+}
+.btn-masivo:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
 
 /* ─── Páginas de Jornada (pantalla completa) ── */
 .jornada-page {
