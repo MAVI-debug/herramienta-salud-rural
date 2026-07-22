@@ -101,8 +101,9 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             })
 
     with pdfplumber.open(ruta_pdf) as pdf:
-        for pagina in pdf.pages:
-            # Intentar extraer Grado / Sección del texto plano de la página
+        total_paginas = len(pdf.pages)
+        for idx in range(total_paginas):
+            pagina = pdf.pages[idx]
             texto_pagina = pagina.extract_text() or ""
             m_g = re.search(r'Grado:\s*(.+?)(?:Seccion:|$)', texto_pagina, re.IGNORECASE)
             m_s = re.search(r'Seccion:\s*(\S+)', texto_pagina, re.IGNORECASE)
@@ -114,24 +115,32 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
                 posible = m_s.group(1).strip().upper()
                 if posible:
                     seccion_actual = posible
+            del texto_pagina
 
-            for tabla in pagina.extract_tables():
-                if not tabla:
-                    continue
-                enc = [str(c).replace("\n", " ").strip() if c else "" for c in tabla[0]]
-                if enc[0] == "Grado:" and len(enc) >= 4:
-                    grado_actual = str(enc[1] or "").strip().upper()
-                    seccion_actual = str(enc[3] or "").strip().upper()
-                    continue
-                if "Apellidos" in enc and "Nombres" in enc:
-                    for fila in tabla[1:]:
-                        if es_fila_alumno(fila):
-                            procesar_fila(fila)
-                    continue
-                if enc[0].isdigit() and len(enc) >= 9:
-                    for fila in tabla:
-                        if es_fila_alumno(fila):
-                            procesar_fila(fila)
+            tablas = pagina.extract_tables()
+            del pagina
+            if tablas:
+                for tabla in tablas:
+                    if not tabla:
+                        continue
+                    enc = [str(c).replace("\n", " ").strip() if c else "" for c in tabla[0]]
+                    if enc[0] == "Grado:" and len(enc) >= 4:
+                        grado_actual = str(enc[1] or "").strip().upper()
+                        seccion_actual = str(enc[3] or "").strip().upper()
+                        continue
+                    if "Apellidos" in enc and "Nombres" in enc:
+                        for fila in tabla[1:]:
+                            if es_fila_alumno(fila):
+                                procesar_fila(fila)
+                        continue
+                    if enc[0].isdigit() and len(enc) >= 9:
+                        for fila in tabla:
+                            if es_fila_alumno(fila):
+                                procesar_fila(fila)
+                del tablas
+            if (idx + 1) % 10 == 0:
+                gc.collect()
+    gc.collect()
     return alumnos
 
 _ETIQUETAS_ENCABEZADO_PDF = ["Nombre:", "Dirección:", "Código:"]
@@ -143,6 +152,8 @@ def extraer_metadatos_encabezado_pdf(ruta_pdf: str):
             texto_pag1 = pdf.pages[0].extract_text() or ""
     except Exception:
         return "", "", ""
+    finally:
+        gc.collect()
     lineas = texto_pag1.splitlines()[:_MAX_LINEAS_ENCABEZADO]
     texto_top = "\n".join(lineas)
 
