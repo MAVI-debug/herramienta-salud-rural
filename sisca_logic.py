@@ -9,7 +9,7 @@ from datetime import date
 from io import BytesIO
 from typing import Optional
 
-import pdfplumber
+import pypdf
 import openpyxl
 import openpyxl.utils
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -81,79 +81,74 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     seccion_actual = ""
     _errores_pagina = []
 
-    def es_fila_alumno(fila):
-        return fila and len(fila) >= 9 and str(fila[0] or "").strip().isdigit()
+    _RE_CUI = re.compile(r'\b(\d{13})\b')
+    _RE_DATE = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
+    _RE_FILA = re.compile(
+        r'^(\d+)\s+'
+        r'.*?'
+        r'(\d{1,2}/\d{1,2}/\d{4})\s+'
+        r'([A-ZÁÉÍÓÚÑ\s]+?)\s{2,}'
+        r'([A-ZÁÉÍÓÚÑ\s]+?)\s{2,}'
+        r'.*?'
+        r'(\d{13})\s+'
+        r'([FM])\b',
+        re.MULTILINE
+    )
 
-    def procesar_fila(fila):
-        ap = str(fila[2] or "").replace("\n", " ").strip().upper()
-        nom = str(fila[3] or "").replace("\n", " ").strip().upper()
-        fec = str(fila[4] or "").strip()
-        cui = str(fila[7] or "").strip()
-        gen = str(fila[8] or "").strip().upper()
-        if ap and nom:
-            alumnos.append({
-                "grado": grado_actual,
-                "seccion": seccion_actual,
-                "apellidos": ap,
-                "nombres": nom,
-                "fecha_nac": fec,
-                "cui": cui,
-                "genero": gen,
-            })
-
-    def _extraer_pagina(idx):
+    def _procesar_pagina_texto(texto):
         nonlocal grado_actual, seccion_actual
-        with pdfplumber.open(ruta_pdf) as pdf:
-            pagina = pdf.pages[idx]
-            texto_pagina = pagina.extract_text() or ""
-            m_g = re.search(r'Grado:\s*(.+?)(?:Seccion:|$)', texto_pagina, re.IGNORECASE)
-            m_s = re.search(r'Seccion:\s*(\S+)', texto_pagina, re.IGNORECASE)
-            if m_g:
-                posible = m_g.group(1).strip().upper()
-                if posible:
-                    grado_actual = posible
-            if m_s:
-                posible = m_s.group(1).strip().upper()
-                if posible:
-                    seccion_actual = posible
-            del texto_pagina
+        m_g = re.search(r'Grado:\s*(.+?)(?:Seccion:|$)', texto, re.IGNORECASE)
+        m_s = re.search(r'Seccion:\s*(\S+)', texto, re.IGNORECASE)
+        if m_g:
+            val = m_g.group(1).strip().upper()
+            if val:
+                grado_actual = val
+        if m_s:
+            val = m_s.group(1).strip().upper()
+            if val:
+                seccion_actual = val
 
-            tablas = pagina.extract_tables()
-            del pagina
-        if not tablas:
-            del tablas
-            return
-        for tabla in tablas:
-            if not tabla:
-                continue
-            enc = [str(c).replace("\n", " ").strip() if c else "" for c in tabla[0]]
-            if enc[0] == "Grado:" and len(enc) >= 4:
-                grado_actual = str(enc[1] or "").strip().upper()
-                seccion_actual = str(enc[3] or "").strip().upper()
-                continue
-            if "Apellidos" in enc and "Nombres" in enc:
-                for fila in tabla[1:]:
-                    if es_fila_alumno(fila):
-                        procesar_fila(fila)
-                continue
-            if enc[0].isdigit() and len(enc) >= 9:
-                for fila in tabla:
-                    if es_fila_alumno(fila):
-                        procesar_fila(fila)
-        del tablas
+        for m in _RE_FILA.finditer(texto):
+            ap = m.group(3).strip()
+            nom = m.group(4).strip()
+            fec = m.group(2).strip()
+            cui = m.group(5).strip()
+            gen = m.group(6).strip()
+            if ap and nom:
+                alumnos.append({
+                    "grado": grado_actual,
+                    "seccion": seccion_actual,
+                    "apellidos": ap,
+                    "nombres": nom,
+                    "fecha_nac": fec,
+                    "cui": cui,
+                    "genero": gen,
+                })
 
-    with pdfplumber.open(ruta_pdf) as pdf:
-        total = len(pdf.pages)
+    try:
+        reader = pypdf.PdfReader(ruta_pdf)
+        total = len(reader.pages)
+    except Exception as e:
+        print(f"[extraer_alumnos_pdf] No se pudo abrir PDF: {e}")
+        return alumnos
 
     for idx in range(total):
+        texto = ""
         try:
-            _extraer_pagina(idx)
+            pagina = reader.pages[idx]
+            texto = pagina.extract_text() or ""
+            del pagina
+            _procesar_pagina_texto(texto)
         except Exception as e_pag:
             _errores_pagina.append(f"Página {idx + 1}: {type(e_pag).__name__}")
-        gc.collect()
+        finally:
+            del texto
+            gc.collect()
+
+    del reader
 
     if _errores_pagina:
-        print(f"[extraer_alumnos_pdf] {len(_errores_pagina)} error(es) en páginas: "
+        print(f"[extraer_alumnos_pdf] {len(_errores_pagina)} error(es): "
               + "; ".join(_errores_pagina[:5])
               + ("..." if len(_errores_pagina) > 5 else ""))
 
@@ -163,13 +158,16 @@ _ETIQUETAS_ENCABEZADO_PDF = ["Nombre:", "Dirección:", "Código:"]
 _MAX_LINEAS_ENCABEZADO = 15
 
 def extraer_metadatos_encabezado_pdf(ruta_pdf: str):
+    texto_pag1 = ""
     try:
-        with pdfplumber.open(ruta_pdf) as pdf:
-            texto_pag1 = pdf.pages[0].extract_text() or ""
+        reader = pypdf.PdfReader(ruta_pdf)
+        texto_pag1 = reader.pages[0].extract_text() or ""
+        del reader
     except Exception:
         return "", "", ""
     finally:
         gc.collect()
+
     lineas = texto_pag1.splitlines()[:_MAX_LINEAS_ENCABEZADO]
     texto_top = "\n".join(lineas)
 
@@ -197,6 +195,8 @@ def extraer_metadatos_encabezado_pdf(ruta_pdf: str):
         nombre = f"{nombre} JM"
     elif "VESPERTINA" in jornada:
         nombre = f"{nombre} JV"
+    del texto_pag1, texto_top
+    gc.collect()
     return nombre, direccion, codigo
 
 def construir_nombre_escolar_completo(nombre: str, direccion: str) -> str:
