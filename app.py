@@ -12,7 +12,8 @@ import zipfile
 from datetime import timedelta, date, datetime
 
 from flask import (Flask, render_template, request, redirect,
-                   url_for, session, flash, g, send_file, make_response)
+                   url_for, session, flash, g, send_file, make_response,
+                   jsonify)
 from flask_caching import Cache
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -1354,6 +1355,115 @@ def cargar_pdf_consolidado():
         flash("No se procesaron archivos.", "warning")
 
     return redirect(url_for("consolidado"))
+
+
+@app.route("/cargar_pdf_uno", methods=["POST"])
+def cargar_pdf_uno():
+    """Recibe un solo PDF, lo procesa, devuelve JSON {ok, nombre, error}."""
+    if "usuario_id" not in session:
+        return jsonify({"ok": False, "error": "Sesión expirada."}), 401
+
+    archivo = request.files.get("archivo_pdf")
+    if not archivo or archivo.filename == "":
+        return jsonify({"ok": False, "error": "No se recibió archivo."}), 400
+    if not archivo.filename.lower().endswith(".pdf"):
+        return jsonify({"ok": False, "error": f"«{archivo.filename}» no es PDF."}), 400
+
+    fecha_corte_str = request.form.get("fecha_corte", "").strip()
+    if fecha_corte_str:
+        try:
+            fc = datetime.strptime(fecha_corte_str, "%d/%m/%Y").date()
+            fecha_corte_db = fc.strftime("%d/%m/%Y")
+        except (ValueError, TypeError):
+            fc = date.today()
+            fecha_corte_db = fc.strftime("%d/%m/%Y")
+    else:
+        fc = date.today()
+        fecha_corte_db = fc.strftime("%d/%m/%Y")
+
+    tmp_path = None
+    try:
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        tmp_path = tmp.name
+        archivo.save(tmp_path)
+        tmp.close()
+
+        alumnos = sisca_logic.extraer_alumnos_pdf(tmp_path)
+        if not alumnos:
+            return jsonify({"ok": False, "error": f"«{archivo.filename}»: sin alumnos."}), 200
+
+        nombre, direccion, codigo = sisca_logic.extraer_metadatos_encabezado_pdf(tmp_path)
+        nombre_escuela = sisca_logic.construir_nombre_escolar_completo(nombre, direccion)
+        if not nombre_escuela:
+            nombre_escuela = "ESCUELA SIN NOMBRE"
+
+        uid = session["usuario_id"]
+        execute("""
+            INSERT INTO escuelas
+                (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (codigo_centro, usuario_id) DO NOTHING
+        """, (codigo, uid, nombre_escuela,
+              _normalizar_tipo_centro(""), ""))
+
+        for a in alumnos:
+            dia, mes, anio = sisca_logic._split_fecha(a["fecha_nac"])
+            gen = "F" if a.get("genero", "").startswith("F") else "M"
+            nombre_completo = sisca_logic._nombre_completo(a)
+            cui = a.get("cui", "")
+            fecha_nac = a.get("fecha_nac", "")
+            if not cui:
+                raw = f"{nombre_completo}{fecha_nac}{a.get('grado', '')}{a.get('seccion', '')}"
+                cui = f"TMP-{hashlib.sha256(raw.encode()).hexdigest()[:12].upper()}"
+            edad = sisca_logic.calcular_edad_a_fecha_corte(dia, mes, anio, fc)
+            sexo_db = "Femenino" if gen == "F" else "Masculino"
+            execute("""
+                INSERT INTO estudiantes
+                    (cui, usuario_id, nombre_completo, sexo, fecha_nacimiento, grado, seccion)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (cui, usuario_id) DO NOTHING
+            """, (cui, uid, nombre_completo, sexo_db, fecha_nac,
+                  a.get("grado", ""), a.get("seccion", "")))
+            execute("""
+                UPDATE estudiantes SET grado = %s, seccion = %s WHERE cui = %s AND usuario_id = %s
+            """, (a.get("grado", ""), a.get("seccion", ""), cui, uid))
+            execute("""
+                INSERT INTO registros_salud
+                    (cui_estudiante, codigo_centro, tipo_intervencion,
+                     campana, fecha_aplicacion, fecha_corte, edad_calculo, usuario_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (cui, codigo, "Desparasitación", "Primera",
+                  date.today().isoformat(), fecha_corte_db, edad, uid))
+
+        try:
+            commit()
+        except Exception as e_commit:
+            try:
+                rollback()
+            except Exception:
+                pass
+            return jsonify({"ok": False, "error": f"Error al guardar: {e_commit}"}), 500
+
+        return jsonify({
+            "ok": True,
+            "nombre": nombre_escuela,
+            "codigo": codigo,
+            "alumnos": len(alumnos),
+        })
+
+    except Exception as e:
+        try:
+            rollback()
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+        gc.collect()
 
 
 # ---------------------------------------------------------------------------

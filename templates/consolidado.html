@@ -26,26 +26,22 @@
         </form>
     </div>
 
-    <form id="uploadForm" method="POST" action="{{ url_for('cargar_pdf_consolidado') }}" enctype="multipart/form-data" class="upload-pdf-bar">
+    <div class="upload-pdf-bar" id="uploadBar">
         <div class="upload-content">
             <span class="upload-icon">📄</span>
-            <label class="upload-label">Añadir Escuela (Subir PDF Nominal)</label>
-            <input type="file" name="archivos_pdf" accept=".pdf" multiple required class="upload-input">
-            <input type="hidden" name="fecha_corte" value="{{ fecha_corte_str }}">
-            <button type="submit" class="btn-upload-submit">Subir y procesar</button>
+            <label class="upload-label" id="uploadLabel">Añadir Escuela (Subir PDF Nominal)</label>
+            <input type="file" id="fileInput" accept=".pdf" multiple class="upload-input">
+            <input type="hidden" id="fechaCorte" value="{{ fecha_corte_str }}">
         </div>
-    </form>
+    </div>
 
-    <div id="uploadOverlay" class="loading-overlay" style="display:none;">
-        <div class="loading-card">
-            <div class="loading-spinner"></div>
-            <p class="loading-text">Procesando archivos…</p>
-            <div class="progress-bar-container">
-                <div class="progress-bar-fill" id="uploadProgressFill"></div>
-            </div>
-            <p class="progress-porcent" id="uploadProgressPorcent">0%</p>
-            <p class="loading-sub">Extrayendo datos de los PDFs seleccionados</p>
+    <div id="uploadQueue" class="upload-queue" style="display:none;">
+        <div class="queue-header">
+            <span class="queue-title">Cola de procesamiento</span>
+            <span class="queue-counter" id="queueCounter">0 / 0</span>
         </div>
+        <div class="queue-list" id="queueList"></div>
+        <div class="queue-summary" id="queueSummary" style="display:none;"></div>
     </div>
 
     {% if matriz %}
@@ -233,39 +229,96 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    var uploadForm = document.getElementById('uploadForm');
-    var uploadOverlay = document.getElementById('uploadOverlay');
-    var progressFill = document.getElementById('uploadProgressFill');
-    var progressPorcent = document.getElementById('uploadProgressPorcent');
+    /* ─── Cola de procesamiento secuencial ─── */
+    var fileInput = document.getElementById('fileInput');
+    var queueWrap = document.getElementById('uploadQueue');
+    var queueList = document.getElementById('queueList');
+    var queueCounter = document.getElementById('queueCounter');
+    var queueSummary = document.getElementById('queueSummary');
+    var fechaCorte = document.getElementById('fechaCorte').value;
+    var processing = false;
 
-    if (uploadForm) {
-        uploadForm.addEventListener('submit', function(e) {
-            var files = uploadForm.querySelector('input[type=file]').files;
-            if (files.length === 0) return;
+    fileInput.addEventListener('change', function() {
+        var files = this.files;
+        if (!files || files.length === 0) return;
 
-            uploadOverlay.style.display = 'flex';
-            uploadOverlay.style.opacity = '0';
-            setTimeout(function() {
-                uploadOverlay.style.transition = 'opacity 0.3s';
-                uploadOverlay.style.opacity = '1';
-            }, 20);
+        queueList.innerHTML = '';
+        queueSummary.style.display = 'none';
+        queueWrap.style.display = 'block';
 
-            var pct = 0;
-            var interval = setInterval(function() {
-                if (pct < 90) {
-                    pct += Math.random() * 6 + 1;
-                    if (pct > 90) pct = 90;
-                    progressFill.style.width = Math.round(pct) + '%';
-                    progressPorcent.textContent = Math.round(pct) + '%';
+        var items = [];
+        for (var i = 0; i < files.length; i++) {
+            var li = document.createElement('div');
+            li.className = 'queue-item';
+            li.innerHTML =
+                '<span class="qi-name" title="' + files[i].name + '">' + files[i].name + '</span>' +
+                '<span class="qi-status qi-pending">Pendiente</span>' +
+                '<div class="qi-bar"><div class="qi-bar-fill" style="width:0%"></div></div>';
+            queueList.appendChild(li);
+            items.push({ file: files[i], el: li });
+        }
+
+        queueCounter.textContent = '0 / ' + items.length;
+        processQueue(items, 0);
+        fileInput.value = '';
+    });
+
+    function processQueue(items, idx) {
+        if (idx >= items.length) {
+            showSummary(items);
+            processing = false;
+            return;
+        }
+        processing = true;
+        var item = items[idx];
+        var status = item.el.querySelector('.qi-status');
+        var fill = item.el.querySelector('.qi-bar-fill');
+
+        status.textContent = 'Procesando...';
+        status.className = 'qi-status qi-processing';
+        fill.style.width = '30%';
+        queueCounter.textContent = (idx + 1) + ' / ' + items.length;
+
+        var fd = new FormData();
+        fd.append('archivo_pdf', item.file);
+        fd.append('fecha_corte', fechaCorte);
+
+        fetch('/cargar_pdf_uno', { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                fill.style.width = '100%';
+                if (data.ok) {
+                    status.textContent = '✓ ' + data.alumnos + ' alumnos';
+                    status.className = 'qi-status qi-ok';
+                    item.el.classList.add('queue-ok');
+                } else {
+                    status.textContent = '✗ ' + (data.error || 'Error');
+                    status.className = 'qi-status qi-error';
+                    item.el.classList.add('queue-error');
                 }
-            }, 500);
+                setTimeout(function() { processQueue(items, idx + 1); }, 150);
+            })
+            .catch(function(err) {
+                fill.style.width = '100%';
+                status.textContent = '✗ Error de red';
+                status.className = 'qi-status qi-error';
+                item.el.classList.add('queue-error');
+                setTimeout(function() { processQueue(items, idx + 1); }, 150);
+            });
+    }
 
-            setTimeout(function() {
-                clearInterval(interval);
-                progressFill.style.width = '100%';
-                progressPorcent.textContent = '100%';
-            }, 30000);
-        });
+    function showSummary(items) {
+        var ok = 0, fail = 0;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].el.classList.contains('queue-ok')) ok++;
+            else fail++;
+        }
+        queueSummary.style.display = 'block';
+        var html = '<strong>Proceso finalizado:</strong> ';
+        html += ok + ' archivo(s) procesado(s)';
+        if (fail > 0) html += ' &middot; <strong>' + fail + '</strong> con error';
+        queueSummary.innerHTML = html;
+        setTimeout(function() { location.reload(); }, 2200);
     }
 });
 
