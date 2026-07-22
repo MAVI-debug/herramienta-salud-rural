@@ -75,6 +75,8 @@ def calcular_edad_a_fecha_corte(dia_nac, mes_nac, anio_nac, fecha_corte: date):
 #  Extracción del PDF
 # ---------------------------------------------------------------------------
 
+_PDF_LOTE = 10
+
 def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     alumnos = []
     grado_actual = ""
@@ -100,47 +102,54 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
                 "genero": gen,
             })
 
-    with pdfplumber.open(ruta_pdf) as pdf:
-        total_paginas = len(pdf.pages)
-        for idx in range(total_paginas):
-            pagina = pdf.pages[idx]
-            texto_pagina = pagina.extract_text() or ""
-            m_g = re.search(r'Grado:\s*(.+?)(?:Seccion:|$)', texto_pagina, re.IGNORECASE)
-            m_s = re.search(r'Seccion:\s*(\S+)', texto_pagina, re.IGNORECASE)
-            if m_g:
-                posible = m_g.group(1).strip().upper()
-                if posible:
-                    grado_actual = posible
-            if m_s:
-                posible = m_s.group(1).strip().upper()
-                if posible:
-                    seccion_actual = posible
-            del texto_pagina
+    def _procesar_pagina(pagina):
+        nonlocal grado_actual, seccion_actual
+        texto_pagina = pagina.extract_text() or ""
+        m_g = re.search(r'Grado:\s*(.+?)(?:Seccion:|$)', texto_pagina, re.IGNORECASE)
+        m_s = re.search(r'Seccion:\s*(\S+)', texto_pagina, re.IGNORECASE)
+        if m_g:
+            posible = m_g.group(1).strip().upper()
+            if posible:
+                grado_actual = posible
+        if m_s:
+            posible = m_s.group(1).strip().upper()
+            if posible:
+                seccion_actual = posible
+        del texto_pagina
 
-            tablas = pagina.extract_tables()
-            del pagina
-            if tablas:
-                for tabla in tablas:
-                    if not tabla:
-                        continue
-                    enc = [str(c).replace("\n", " ").strip() if c else "" for c in tabla[0]]
-                    if enc[0] == "Grado:" and len(enc) >= 4:
-                        grado_actual = str(enc[1] or "").strip().upper()
-                        seccion_actual = str(enc[3] or "").strip().upper()
-                        continue
-                    if "Apellidos" in enc and "Nombres" in enc:
-                        for fila in tabla[1:]:
-                            if es_fila_alumno(fila):
-                                procesar_fila(fila)
-                        continue
-                    if enc[0].isdigit() and len(enc) >= 9:
-                        for fila in tabla:
-                            if es_fila_alumno(fila):
-                                procesar_fila(fila)
-                del tablas
-            if (idx + 1) % 10 == 0:
-                gc.collect()
-    gc.collect()
+        tablas = pagina.extract_tables()
+        del pagina
+        if not tablas:
+            return
+        for tabla in tablas:
+            if not tabla:
+                continue
+            enc = [str(c).replace("\n", " ").strip() if c else "" for c in tabla[0]]
+            if enc[0] == "Grado:" and len(enc) >= 4:
+                grado_actual = str(enc[1] or "").strip().upper()
+                seccion_actual = str(enc[3] or "").strip().upper()
+                continue
+            if "Apellidos" in enc and "Nombres" in enc:
+                for fila in tabla[1:]:
+                    if es_fila_alumno(fila):
+                        procesar_fila(fila)
+                continue
+            if enc[0].isdigit() and len(enc) >= 9:
+                for fila in tabla:
+                    if es_fila_alumno(fila):
+                        procesar_fila(fila)
+        del tablas
+
+    with pdfplumber.open(ruta_pdf) as pdf:
+        total = len(pdf.pages)
+
+    for inicio in range(0, total, _PDF_LOTE):
+        fin = min(inicio + _PDF_LOTE, total)
+        with pdfplumber.open(ruta_pdf) as pdf:
+            for idx in range(inicio, fin):
+                _procesar_pagina(pdf.pages[idx])
+        gc.collect()
+
     return alumnos
 
 _ETIQUETAS_ENCABEZADO_PDF = ["Nombre:", "Dirección:", "Código:"]
