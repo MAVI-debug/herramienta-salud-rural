@@ -310,15 +310,25 @@ def _run_migrations_pg(conn):
             pass
 
     # Migracion: relajar CHECK constraints para aceptar variantes sin tilde
-    for stmt in [
-        "ALTER TABLE escuelas DROP CONSTRAINT IF EXISTS escuelas_tipo_centro_check",
-        "ALTER TABLE registros_salud DROP CONSTRAINT IF EXISTS registros_salud_tipo_intervencion_check",
-        "ALTER TABLE registros_salud DROP CONSTRAINT IF EXISTS registros_salud_campana_check",
-    ]:
-        try:
-            cur.execute(stmt)
-        except Exception:
-            pass
+    try:
+        cur.execute("""
+            SELECT c.conname, n.nspname, r.relname
+            FROM pg_constraint c
+            JOIN pg_class r ON c.conrelid = r.oid
+            JOIN pg_namespace n ON r.relnamespace = n.oid
+            WHERE c.contype = 'c'
+              AND r.relname IN ('escuelas','registros_salud')
+        """)
+        for row in cur.fetchall():
+            schema = row['nspname']
+            table = row['relname']
+            cname = row['conname']
+            try:
+                cur.execute(f"ALTER TABLE {schema}.{table} DROP CONSTRAINT IF EXISTS {cname}")
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     conn.commit()
     cur.close()

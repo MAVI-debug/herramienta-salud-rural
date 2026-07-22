@@ -704,6 +704,14 @@ def generar_sigsa22():
     return response
 
 
+def _normalizar_tipo_centro(valor):
+    """Normaliza tipo_centro a un valor valido para la BD (PUBLICO / PRIVADO)."""
+    v = (valor or "").strip().upper()
+    if "PRIVAD" in v:
+        return "PRIVADO"
+    return "PUBLICO"
+
+
 def _generar_sisca_para_escuela(codigo_centro, uid, fecha_corte, responsable,
                                  cargo, area_salud, distrito_salud,
                                  servicio_salud, tipo_centro, jornada,
@@ -1282,7 +1290,7 @@ def cargar_pdf_consolidado():
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (codigo_centro, usuario_id) DO NOTHING
             """, (codigo, uid, nombre_escuela or "ESCUELA SIN NOMBRE",
-                  "PUBLICO", ""))
+                  _normalizar_tipo_centro(""), ""))
 
             for a in alumnos:
                 dia, mes, anio = sisca_logic._split_fecha(a["fecha_nac"])
