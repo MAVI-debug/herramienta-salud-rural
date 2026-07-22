@@ -7,6 +7,7 @@ Panel de administración para desparasitación y fluorización.
 import os
 import gc
 import hashlib
+import shutil
 import tempfile
 import zipfile
 from datetime import timedelta, date, datetime
@@ -1270,8 +1271,9 @@ def cargar_pdf_consolidado():
         try:
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
             tmp_path = tmp.name
-            archivo.save(tmp_path)
             tmp.close()
+            with open(tmp_path, "wb") as f:
+                shutil.copyfileobj(archivo.stream, f, length=65536)
 
             alumnos = sisca_logic.extraer_alumnos_pdf(tmp_path)
             if not alumnos:
@@ -1385,8 +1387,9 @@ def cargar_pdf_uno():
     try:
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
         tmp_path = tmp.name
-        archivo.save(tmp_path)
         tmp.close()
+        with open(tmp_path, "wb") as f:
+            shutil.copyfileobj(archivo.stream, f, length=65536)
 
         alumnos = sisca_logic.extraer_alumnos_pdf(tmp_path)
         if not alumnos:
