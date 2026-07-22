@@ -182,6 +182,69 @@ def _run_migrations_sqlite(conn):
         except sqlite3.OperationalError:
             pass
 
+    # Migracion: relajar CHECK constraints para aceptar variantes sin tilde
+    try:
+        conn.execute("PRAGMA table_info(escuelas)")
+        cur_check = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='escuelas'"
+        )
+        ddl = cur_check.fetchone()[0]
+        if "CHECK" in (ddl or ""):
+            conn.execute("PRAGMA foreign_keys=OFF")
+            try:
+                conn.executescript("""
+                    CREATE TABLE escuelas_new (
+                        codigo_centro TEXT NOT NULL,
+                        usuario_id    INTEGER NOT NULL,
+                        nombre_centro TEXT NOT NULL,
+                        tipo_centro   TEXT NOT NULL DEFAULT 'PUBLICO',
+                        servicio_salud TEXT NOT NULL DEFAULT '',
+                        PRIMARY KEY (codigo_centro, usuario_id),
+                        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+                    );
+                    INSERT INTO escuelas_new
+                        SELECT codigo_centro, usuario_id, nombre_centro,
+                               COALESCE(tipo_centro, 'PUBLICO'),
+                               COALESCE(servicio_salud, '')
+                        FROM escuelas;
+                    DROP TABLE escuelas;
+                    ALTER TABLE escuelas_new RENAME TO escuelas;
+
+                    CREATE TABLE registros_salud_new (
+                        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                        cui_estudiante    TEXT,
+                        codigo_centro     TEXT,
+                        tipo_intervencion TEXT NOT NULL DEFAULT 'Desparasitacion',
+                        campana           TEXT NOT NULL DEFAULT 'Primera',
+                        fecha_aplicacion  TEXT NOT NULL,
+                        fecha_corte       TEXT NOT NULL DEFAULT '31/03/2026',
+                        edad_calculo      INTEGER DEFAULT NULL,
+                        usuario_id        INTEGER NOT NULL,
+                        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+                            ON DELETE SET NULL ON UPDATE CASCADE
+                    );
+                    INSERT INTO registros_salud_new
+                        SELECT id, cui_estudiante, codigo_centro,
+                               COALESCE(tipo_intervencion, 'Desparasitacion'),
+                               COALESCE(campana, 'Primera'),
+                               fecha_aplicacion, fecha_corte,
+                               edad_calculo, usuario_id
+                        FROM registros_salud;
+                    DROP TABLE registros_salud;
+                    ALTER TABLE registros_salud_new RENAME TO registros_salud;
+
+                    CREATE INDEX IF NOT EXISTS idx_registros_cui ON registros_salud(cui_estudiante);
+                    CREATE INDEX IF NOT EXISTS idx_registros_centro ON registros_salud(codigo_centro);
+                    CREATE INDEX IF NOT EXISTS idx_registros_intervencion ON registros_salud(tipo_intervencion, campana);
+                    CREATE INDEX IF NOT EXISTS idx_registros_usuario ON registros_salud(usuario_id);
+                """)
+            except Exception:
+                conn.rollback()
+            finally:
+                conn.execute("PRAGMA foreign_keys=ON")
+    except Exception:
+        pass
+
 
 def _run_migrations_pg(conn):
     cur = conn.cursor()
@@ -245,6 +308,18 @@ def _run_migrations_pg(conn):
             cur.execute(col_def)
         except Exception:
             pass
+
+    # Migracion: relajar CHECK constraints para aceptar variantes sin tilde
+    for stmt in [
+        "ALTER TABLE escuelas DROP CONSTRAINT IF EXISTS escuelas_tipo_centro_check",
+        "ALTER TABLE registros_salud DROP CONSTRAINT IF EXISTS registros_salud_tipo_intervencion_check",
+        "ALTER TABLE registros_salud DROP CONSTRAINT IF EXISTS registros_salud_campana_check",
+    ]:
+        try:
+            cur.execute(stmt)
+        except Exception:
+            pass
+
     conn.commit()
     cur.close()
 

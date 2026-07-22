@@ -1281,7 +1281,8 @@ def cargar_pdf_consolidado():
                     (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud)
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (codigo_centro, usuario_id) DO NOTHING
-            """, (codigo, uid, nombre_escuela, "PUBLICO", ""))
+            """, (codigo, uid, nombre_escuela or "ESCUELA SIN NOMBRE",
+                  "PUBLICO", ""))
 
             for a in alumnos:
                 dia, mes, anio = sisca_logic._split_fecha(a["fecha_nac"])
@@ -1309,7 +1310,7 @@ def cargar_pdf_consolidado():
                         (cui_estudiante, codigo_centro, tipo_intervencion,
                          campana, fecha_aplicacion, fecha_corte, edad_calculo, usuario_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, (cui, codigo, "Desparasitacion", "Primera",
+                """, (cui, codigo, "Desparasitación", "Primera",
                       date.today().isoformat(), fecha_corte_db, edad, uid))
 
             try:
