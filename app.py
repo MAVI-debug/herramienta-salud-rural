@@ -25,6 +25,7 @@ import sisca_logic
 app = Flask(__name__)
 app.secret_key = os.urandom(32).hex()
 app.permanent_session_lifetime = timedelta(hours=8)
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB
 
 # Cache en memoria para métricas pesadas
 cache = Cache(app, config={"CACHE_TYPE": "SimpleCache", "CACHE_DEFAULT_TIMEOUT": 600})
