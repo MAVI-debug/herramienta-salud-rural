@@ -1255,15 +1255,16 @@ def cargar_pdf_consolidado():
             errores.append(f"«{archivo.filename}» no es PDF, se omitió.")
             continue
 
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-        tmp_path = tmp.name
+        tmp_path = None
         try:
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            tmp_path = tmp.name
             archivo.save(tmp_path)
             tmp.close()
 
             alumnos = sisca_logic.extraer_alumnos_pdf(tmp_path)
             if not alumnos:
-                errores.append(f"«{archivo.filename}»: sin alumnos, se omitió.")
+                errores.append(f"«{archivo.filename}»: sin alumnos, se omitio.")
                 continue
 
             nombre, direccion, codigo = sisca_logic.extraer_metadatos_encabezado_pdf(tmp_path)
@@ -1273,18 +1274,14 @@ def cargar_pdf_consolidado():
             if not codigo:
                 codigo = f"SIN_CODIGO_{total_escuelas + 1}"
 
-            datos_escuela = {"codigo": codigo, "nombre": nombre_escuela, "tipo": "PÚBLICO"}
-            print("ESCUELA DETECTADA:", datos_escuela)
-
             uid = session["usuario_id"]
             execute("""
                 INSERT INTO escuelas
                     (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud)
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (codigo_centro, usuario_id) DO NOTHING
-            """, (codigo, uid, nombre_escuela, "PÚBLICO", ""))
+            """, (codigo, uid, nombre_escuela, "PUBLICO", ""))
 
-            contador = 0
             for a in alumnos:
                 dia, mes, anio = sisca_logic._split_fecha(a["fecha_nac"])
                 gen = "F" if a.get("genero", "").startswith("F") else "M"
@@ -1311,21 +1308,31 @@ def cargar_pdf_consolidado():
                         (cui_estudiante, codigo_centro, tipo_intervencion,
                          campana, fecha_aplicacion, fecha_corte, edad_calculo, usuario_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, (cui, codigo, "Desparasitación", "Primera",
+                """, (cui, codigo, "Desparasitacion", "Primera",
                       date.today().isoformat(), fecha_corte_db, edad, uid))
-                contador += 1
 
-            commit()
-            total_escuelas += 1
+            try:
+                commit()
+                total_escuelas += 1
+            except Exception as e_commit:
+                try:
+                    rollback()
+                except Exception:
+                    pass
+                errores.append(f"«{archivo.filename}»: error al guardar en BD - {e_commit}")
 
         except Exception as e:
-            rollback()
-            errores.append(f"«{archivo.filename}»: {e}")
-        finally:
             try:
-                os.unlink(tmp_path)
+                rollback()
             except Exception:
                 pass
+            errores.append(f"«{archivo.filename}»: {type(e).__name__} - {e}")
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
 
     if total_escuelas:
         flash(f"¡Éxito! Se procesaron correctamente {total_escuelas} escuela(s) en la base de datos.", "success")
