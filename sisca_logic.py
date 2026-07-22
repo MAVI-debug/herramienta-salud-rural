@@ -75,7 +75,7 @@ def calcular_edad_a_fecha_corte(dia_nac, mes_nac, anio_nac, fecha_corte: date):
 #  Extracción del PDF
 # ---------------------------------------------------------------------------
 
-_PDF_LOTE = 15
+_PDF_LOTE = 10
 
 def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     alumnos = []
