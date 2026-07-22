@@ -80,50 +80,155 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     grado_actual = ""
     seccion_actual = ""
     _errores_pagina = []
+    _cuis_vistos = set()
 
     _RE_CUI = re.compile(r'\b(\d{13})\b')
+    _RE_CODIGO_PERSONAL = re.compile(r'\b([A-Z]{1,4}[\-]?[0-9]{3,8})\b')
     _RE_DATE = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
-    _RE_FILA = re.compile(
-        r'^(\d+)\s+'
-        r'.*?'
-        r'(\d{1,2}/\d{1,2}/\d{4})\s+'
-        r'([A-ZÁÉÍÓÚÑ\s]+?)\s{2,}'
-        r'([A-ZÁÉÍÓÚÑ\s]+?)\s{2,}'
-        r'.*?'
-        r'(\d{13})\s+'
-        r'([FM])\b',
-        re.MULTILINE
-    )
+    _RE_GEN = re.compile(r'\b([FM])\b')
+    _RE_NUM = re.compile(r'^\s*(\d{1,3})\s+')
+    _RE_TEXTO = re.compile(r'[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\.\-]{2,}', re.IGNORECASE)
+
+    def _es_linea_header(linea):
+        ln = linea.strip().upper()
+        if not ln or len(ln) < 3:
+            return True
+        skips = [
+            'TOTAL', 'TOTALES', 'RESUMEN', 'PAGINA', 'PÁGINA',
+            'FECHA', 'HORA', 'DIRECTOR', 'ENCARGADO', 'MINISTERIO',
+            'REPUBLICA', 'REPÚBLICA', 'EDUCACION', 'EDUCACIÓN',
+            'JORNADA', 'PLANILLA', 'NOMINAL', 'LISTADO',
+            'APELLIDOS', 'NOMBRES', 'NOMBRE', 'APELLIDO',
+            'FECHA DE NAC', 'LUGAR', 'CUI', 'GENERO', 'GENÉRO',
+            'GRADO', 'SECCION', 'SECCIÓN', 'SEXO',
+            'CODIGO', 'CÓDIGO', 'ESCUELA', 'DIRECCION', 'DIRECCIÓN',
+            'MUNICIPIO', 'DEPARTAMENTO', 'DISTRITO',
+            'No.', 'NO.', 'Nº', '#',
+            'TOTAL GENERAL', 'TOTAL DE', 'SUBTOTAL',
+            'EDAD', 'EDADES', '<=5', '6-9', '10-14', '15-19',
+            'DESCARGADO', 'SISTEMA', 'MODULO', 'MÓDULO',
+        ]
+        for s in skips:
+            if ln.startswith(s):
+                return True
+        if re.match(r'^\s*\d+\s*$', ln):
+            return True
+        if _RE_CUI.search(ln):
+            return False
+        if _RE_CODIGO_PERSONAL.search(ln):
+            return False
+        if _RE_DATE.search(ln) and not _RE_CUI.search(ln):
+            return False
+        return False
+
+    def _extraer_alumno_de_texto(bloque):
+        m_cui = _RE_CUI.search(bloque)
+        m_cod = _RE_CODIGO_PERSONAL.search(bloque) if not m_cui else None
+        if not m_cui and not m_cod:
+            return None
+
+        if m_cui:
+            cui = m_cui.group(1)
+            if cui in _cuis_vistos:
+                return None
+            _cuis_vistos.add(cui)
+            limpiar_hasta = m_cui.start()
+        else:
+            cui = ""
+            limpiar_hasta = m_cod.start()
+
+        m_gen = _RE_GEN.search(bloque)
+        gen = m_gen.group(1) if m_gen else ""
+
+        m_fec = _RE_DATE.search(bloque)
+        fec = m_fec.group(1) if m_fec else ""
+
+        texto_limpio = bloque[:limpiar_hasta]
+        texto_limpio = re.sub(r'\d{13}', ' ', texto_limpio)
+        texto_limpio = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', ' ', texto_limpio)
+        texto_limpio = re.sub(r'\b[FM]\b', ' ', texto_limpio)
+        texto_limpio = re.sub(r'^\s*\d{1,3}\s+', ' ', texto_limpio)
+
+        chunks = re.split(r'\s{2,}', texto_limpio.strip())
+        palabras_nombre = []
+        for chunk in chunks:
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            for palabra in chunk.split():
+                if len(palabra) >= 2 and re.match(r'^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]*$', palabra, re.IGNORECASE):
+                    palabras_nombre.append(palabra.upper())
+
+        ap = ""
+        nom = ""
+        if len(palabras_nombre) >= 4:
+            mitad = len(palabras_nombre) // 2
+            ap = " ".join(palabras_nombre[:mitad])
+            nom = " ".join(palabras_nombre[mitad:])
+        elif len(palabras_nombre) == 3:
+            ap = " ".join(palabras_nombre[:2])
+            nom = palabras_nombre[2]
+        elif len(palabras_nombre) == 2:
+            ap = palabras_nombre[0]
+            nom = palabras_nombre[1]
+        elif len(palabras_nombre) == 1:
+            ap = palabras_nombre[0]
+
+        if ap and nom:
+            return {
+                "grado": grado_actual,
+                "seccion": seccion_actual,
+                "apellidos": ap.upper(),
+                "nombres": nom.upper(),
+                "fecha_nac": fec,
+                "cui": cui,
+                "genero": gen,
+            }
+        return None
 
     def _procesar_pagina_texto(texto):
         nonlocal grado_actual, seccion_actual
-        m_g = re.search(r'Grado:\s*(.+?)(?:Seccion:|$)', texto, re.IGNORECASE)
+
+        m_g = re.search(r'Grado:\s*(.+?)(?:\s+Seccion:|$)', texto, re.IGNORECASE)
         m_s = re.search(r'Seccion:\s*(\S+)', texto, re.IGNORECASE)
         if m_g:
             val = m_g.group(1).strip().upper()
-            if val:
+            if val and len(val) < 40:
                 grado_actual = val
         if m_s:
             val = m_s.group(1).strip().upper()
             if val:
                 seccion_actual = val
 
-        for m in _RE_FILA.finditer(texto):
-            ap = m.group(3).strip()
-            nom = m.group(4).strip()
-            fec = m.group(2).strip()
-            cui = m.group(5).strip()
-            gen = m.group(6).strip()
-            if ap and nom:
-                alumnos.append({
-                    "grado": grado_actual,
-                    "seccion": seccion_actual,
-                    "apellidos": ap,
-                    "nombres": nom,
-                    "fecha_nac": fec,
-                    "cui": cui,
-                    "genero": gen,
-                })
+        lineas = texto.splitlines()
+        i = 0
+        while i < len(lineas):
+            linea = lineas[i]
+            tiene_cui = bool(_RE_CUI.search(linea))
+            tiene_codigo = bool(_RE_CODIGO_PERSONAL.search(linea))
+
+            if not tiene_cui and not tiene_codigo:
+                i += 1
+                continue
+
+            if _es_linea_header(linea):
+                i += 1
+                continue
+
+            bloque = linea.rstrip()
+            j = i + 1
+            while j < len(lineas) and j <= i + 3:
+                prox = lineas[j].strip()
+                if prox and not _es_linea_header(prox):
+                    bloque += " " + prox
+                    j += 1
+                else:
+                    break
+
+            alumno = _extraer_alumno_de_texto(bloque)
+            if alumno:
+                alumnos.append(alumno)
+            i = j
 
     try:
         reader = pypdf.PdfReader(ruta_pdf)
@@ -660,7 +765,7 @@ def generar_excel_consolidado(ruta_salida: str,
 
     ws["A1"] = "CONSOLIDADO DE SALUD RURAL"
     ws["A1"].font = Font(bold=True, size=14, name="Arial", color="0C6478")
-    ws.merge_cells("A1:N1")
+    ws.merge_cells("A1:O1")
     ws["A2"] = f"Corte: {fecha_corte.strftime('%d/%m/%Y')}"
     ws["A2"].font = Font(size=10, name="Arial", color="555555")
 
@@ -671,16 +776,17 @@ def generar_excel_consolidado(ruta_salida: str,
         bottom=Side(style='thin'),
     )
 
-    ancho_cols = [5, 38, 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 13, 11]
+    ancho_cols = [5, 38, 18, 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 13, 11]
     for i, w in enumerate(ancho_cols, 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
     # ---- Encabezados combinados (Fila 4: bloques, Fila 5: M/F) ----
     merge_bloques = [
         ("A4:A5", "No."), ("B4:B5", "Establecimiento"),
-        ("C4:D4", "Inscritos"), ("E4:F4", "≤ 5 años"), ("G4:H4", "6 - 9 años"),
-        ("I4:J4", "10 - 14 años"), ("K4:L4", "15 - 19 años"),
-        ("M4:M5", "Total Escolarizados\n(6 a 14)"), ("N4:N5", "Total General"),
+        ("C4:C5", "Código Centro"),
+        ("D4:E4", "Inscritos"), ("F4:G4", "≤ 5 años"), ("H4:I4", "6 - 9 años"),
+        ("J4:K4", "10 - 14 años"), ("L4:M4", "15 - 19 años"),
+        ("N4:N5", "Total Escolarizados\n(6 a 14)"), ("O4:O5", "Total General"),
     ]
 
     def _estilar_encabezado(celda):
@@ -696,11 +802,11 @@ def generar_excel_consolidado(ruta_salida: str,
         _estilar_encabezado(cel)
 
     # Sub-etiquetas M/F en fila 5 (solo columnas no combinadas verticalmente)
-    ws.cell(5, 3, "M"); ws.cell(5, 4, "F")   # Inscritos
-    ws.cell(5, 5, "M"); ws.cell(5, 6, "F")   # ≤ 5 años
-    ws.cell(5, 7, "M"); ws.cell(5, 8, "F")   # 6 - 9 años
-    ws.cell(5, 9, "M"); ws.cell(5, 10, "F")  # 10 - 14 años
-    ws.cell(5, 11, "M"); ws.cell(5, 12, "F") # 15 - 19 años
+    ws.cell(5, 4, "M"); ws.cell(5, 5, "F")   # Inscritos
+    ws.cell(5, 6, "M"); ws.cell(5, 7, "F")   # ≤ 5 años
+    ws.cell(5, 8, "M"); ws.cell(5, 9, "F")   # 6 - 9 años
+    ws.cell(5, 10, "M"); ws.cell(5, 11, "F")  # 10 - 14 años
+    ws.cell(5, 12, "M"); ws.cell(5, 13, "F")  # 15 - 19 años
 
     fila = 5
     # Una fila por establecimiento (suma de todos sus grados)
@@ -737,16 +843,18 @@ def generar_excel_consolidado(ruta_salida: str,
 
         ws.cell(fila, 1, no_global).font = _STYLE_DATA
         ws.cell(fila, 2, nombre_escuela).font = _STYLE_DATA
+        ws.cell(fila, 3, codigo).font = _STYLE_DATA
 
         vals = [m_tot, f_tot, m_5, f_5, m_6_9, f_6_9, m_10_14, f_10_14, m_15_19, f_15_19, total_esc, total_gen]
-        for col_idx, val in enumerate(vals, start=3):
+        for col_idx, val in enumerate(vals, start=4):
             c = ws.cell(fila, col_idx, val)
             c.font = _STYLE_DATA
             c.alignment = Alignment(horizontal="center", vertical="center")
 
         ws.cell(fila, 1).alignment = Alignment(horizontal="center", vertical="center")
+        ws.cell(fila, 3).alignment = Alignment(horizontal="center", vertical="center")
 
-        for col in range(1, 15):
+        for col in range(1, 16):
             cel = ws.cell(fila, col)
             cel.border = thin_border
             if no_global % 2 == 0:
@@ -763,8 +871,10 @@ def generar_excel_consolidado(ruta_salida: str,
     ws.cell(total_row, 2, "TOTALES").font = fuente_total
     ws.cell(total_row, 2).fill = fill_total
     ws.cell(total_row, 2).border = thin_border
+    ws.cell(total_row, 3).fill = fill_total
+    ws.cell(total_row, 3).border = thin_border
     first_data = 6
-    for col in range(3, 15):
+    for col in range(4, 16):
         cel = ws.cell(total_row, col)
         cel.value = f"=SUM({openpyxl.utils.get_column_letter(col)}{first_data}:{openpyxl.utils.get_column_letter(col)}{total_row - 1})"
         cel.font = fuente_total
