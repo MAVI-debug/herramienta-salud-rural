@@ -75,8 +75,6 @@ def calcular_edad_a_fecha_corte(dia_nac, mes_nac, anio_nac, fecha_corte: date):
 #  Extracción del PDF
 # ---------------------------------------------------------------------------
 
-_PDF_LOTE = 10
-
 def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     alumnos = []
     grado_actual = ""
@@ -103,23 +101,27 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
                 "genero": gen,
             })
 
-    def _procesar_pagina(pagina, num_pag):
+    def _extraer_pagina(idx):
         nonlocal grado_actual, seccion_actual
-        texto_pagina = pagina.extract_text() or ""
-        m_g = re.search(r'Grado:\s*(.+?)(?:Seccion:|$)', texto_pagina, re.IGNORECASE)
-        m_s = re.search(r'Seccion:\s*(\S+)', texto_pagina, re.IGNORECASE)
-        if m_g:
-            posible = m_g.group(1).strip().upper()
-            if posible:
-                grado_actual = posible
-        if m_s:
-            posible = m_s.group(1).strip().upper()
-            if posible:
-                seccion_actual = posible
-        del texto_pagina
+        with pdfplumber.open(ruta_pdf) as pdf:
+            pagina = pdf.pages[idx]
+            texto_pagina = pagina.extract_text() or ""
+            m_g = re.search(r'Grado:\s*(.+?)(?:Seccion:|$)', texto_pagina, re.IGNORECASE)
+            m_s = re.search(r'Seccion:\s*(\S+)', texto_pagina, re.IGNORECASE)
+            if m_g:
+                posible = m_g.group(1).strip().upper()
+                if posible:
+                    grado_actual = posible
+            if m_s:
+                posible = m_s.group(1).strip().upper()
+                if posible:
+                    seccion_actual = posible
+            del texto_pagina
 
-        tablas = pagina.extract_tables()
+            tablas = pagina.extract_tables()
+            del pagina
         if not tablas:
+            del tablas
             return
         for tabla in tablas:
             if not tabla:
@@ -143,17 +145,11 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     with pdfplumber.open(ruta_pdf) as pdf:
         total = len(pdf.pages)
 
-    for inicio in range(0, total, _PDF_LOTE):
-        fin = min(inicio + _PDF_LOTE, total)
+    for idx in range(total):
         try:
-            with pdfplumber.open(ruta_pdf) as pdf:
-                for idx in range(inicio, fin):
-                    try:
-                        _procesar_pagina(pdf.pages[idx], idx + 1)
-                    except Exception as e_pag:
-                        _errores_pagina.append(f"Página {idx + 1}: {type(e_pag).__name__}")
-        except Exception as e_lote:
-            _errores_pagina.append(f"Lote {inicio}-{fin}: {type(e_lote).__name__}")
+            _extraer_pagina(idx)
+        except Exception as e_pag:
+            _errores_pagina.append(f"Página {idx + 1}: {type(e_pag).__name__}")
         gc.collect()
 
     if _errores_pagina:
