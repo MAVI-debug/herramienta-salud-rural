@@ -5,6 +5,7 @@ Panel de administración para desparasitación y fluorización.
 """
 
 import os
+import gc
 import hashlib
 import tempfile
 import zipfile
@@ -1343,11 +1344,14 @@ def cargar_pdf_consolidado():
                     os.unlink(tmp_path)
                 except Exception:
                     pass
+            gc.collect()
 
     if total_escuelas:
-        flash(f"¡Éxito! Se procesaron correctamente {total_escuelas} escuela(s) en la base de datos.", "success")
-    for err in errores:
-        flash(err, "warning" if total_escuelas else "danger")
+        flash(f"Proceso finalizado: {total_escuelas} escuela(s) procesada(s) con exito.", "success")
+    if errores:
+        flash(f"Archivos con error ({len(errores)}): " + "; ".join(errores), "warning")
+    if not total_escuelas and not errores:
+        flash("No se procesaron archivos.", "warning")
 
     return redirect(url_for("consolidado"))
 
