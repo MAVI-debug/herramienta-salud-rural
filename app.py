@@ -967,6 +967,17 @@ def procesar_sisca_masiva():
 
 
 def _background_sisca_masivo(job_id):
+    with app.app_context():
+        try:
+            _background_sisca_masivo_inner(job_id)
+        except Exception as exc:
+            import traceback
+            tb = traceback.format_exc()
+            print(f"[SISCA MASIVO] Hilo murio: {exc}\n{tb}", flush=True)
+            _job_set(job_id, estado="error", error=str(exc), errores=[str(exc)])
+
+
+def _background_sisca_masivo_inner(job_id):
     job = _job_get(job_id)
     uid = job["usuario_id"]
     rutas = []
@@ -974,16 +985,27 @@ def _background_sisca_masivo(job_id):
 
     for i, codigo in enumerate(job["codigos"]):
         _job_set(job_id, completados=i, estado="procesando")
-        ruta, nombre, err = _generar_sisca_para_escuela(
-            codigo, uid, job["fecha_corte"], job["responsable"],
-            job["cargo"], job["area_salud"], job["distrito_salud"],
-            job["servicio_salud"], "PUBLICO", job["jornada"],
-            fecha_reporte=job["fecha_reporte"],
-        )
-        if err:
-            errores.append(err)
-        else:
-            rutas.append(ruta)
+        try:
+            ruta, nombre, err = _generar_sisca_para_escuela(
+                codigo, uid, job["fecha_corte"], job["responsable"],
+                job["cargo"], job["area_salud"], job["distrito_salud"],
+                job["servicio_salud"], "PUBLICO", job["jornada"],
+                fecha_reporte=job["fecha_reporte"],
+            )
+            if err:
+                errores.append(err)
+            else:
+                rutas.append(ruta)
+        except Exception as exc:
+            errores.append(f"Excepcion en {codigo}: {exc}")
+        finally:
+            from flask import g as _flask_g
+            _db = _flask_g.pop("db", None)
+            if _db is not None:
+                try:
+                    _db.close()
+                except Exception:
+                    pass
         gc.collect()
 
     _job_set(job_id, completados=len(job["codigos"]), estado="empaquetando")
@@ -1018,6 +1040,7 @@ def sisca_progreso(job_id):
         "total": job.get("total", 0),
         "completados": job.get("completados", 0),
         "errores": job.get("errores", []),
+        "error": job.get("error", None),
     })
 
 

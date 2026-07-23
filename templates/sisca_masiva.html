@@ -213,6 +213,12 @@
                     return;
                 }
 
+                if (d.estado === 'error') {
+                    clearInterval(interval);
+                    showError(d.error || 'El hilo de procesamiento murio inesperadamente.');
+                    return;
+                }
+
                 var done = d.completados || 0;
                 var errs = d.errores || [];
                 var pct = total > 0 ? Math.round((done / total) * 100) : 0;
