@@ -86,20 +86,8 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     _RE_CODIGO_PERSONAL = re.compile(r'\b([A-Z]{1,4}[\-]?[0-9]{3,8})\b')
     _RE_DATE = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
     _RE_GEN = re.compile(r'\b([FM])\b')
-    _RE_PALABRA = re.compile(r'[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]+', re.IGNORECASE)
-    _JUNK = {
-        'GUATEMALTECA', 'GUATEMALA', 'CUI', 'GENERO', 'GENÉRO', 'SEXO',
-        'FECHA', 'NACIMIENTO', 'NAC', 'LUGAR', 'NOMBRE', 'NOMBRES',
-        'APELLIDOS', 'APELLIDO', 'GRADO', 'SECCION', 'SECCIÓN',
-        'EDAD', 'TOTAL', 'TOTALES', 'PAIS', 'PAÍS', 'MUNICIPAL',
-        'DEPTO', 'DEPARTAMENTO', 'DISTRITO', 'MODULO', 'MÓDULO',
-        'CODIGO', 'CÓDIGO', 'ESCUELA', 'ESTABLECIMIENTO', 'INSTITUTO',
-        'COMUNIDAD', 'CASERIO', 'ALDEA', 'COLONIA', 'BARRIO',
-        'PLANILLA', 'NOMINAL', 'LISTADO', 'MINISTERIO', 'EDUCACION',
-        'EDUCACIÓN', 'REPUBLICA', 'REPÚBLICA', 'SALUD', 'JORNADA',
-        'MATUTINA', 'VESPERTINA', 'PRIMERA', 'SEGUNDA', 'DESCARGADO',
-        'SISTEMA', 'NORTE', 'SUR', 'ESTE', 'OESTE',
-    }
+    _RE_NUM = re.compile(r'^\s*(\d{1,3})\s+')
+    _RE_TEXTO = re.compile(r'[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\.\-]{2,}', re.IGNORECASE)
 
     def _es_linea_header(linea):
         ln = linea.strip().upper()
@@ -144,10 +132,10 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             if cui in _cuis_vistos:
                 return None
             _cuis_vistos.add(cui)
-            zona_ids = m_cui.end()
+            limpiar_hasta = m_cui.start()
         else:
             cui = ""
-            zona_ids = m_cod.end()
+            limpiar_hasta = m_cod.start()
 
         m_gen = _RE_GEN.search(bloque)
         gen = m_gen.group(1) if m_gen else ""
@@ -155,37 +143,43 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         m_fec = _RE_DATE.search(bloque)
         fec = m_fec.group(1) if m_fec else ""
 
-        texto_nombre = bloque[:m_cui.start() if m_cui else m_cod.start()]
-        texto_nombre = re.sub(r'\b\d{1,3}\b', ' ', texto_nombre)
-        texto_nombre = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', ' ', texto_nombre)
-        texto_nombre = re.sub(r'\b[FM]\b', ' ', texto_nombre)
-        texto_nombre = re.sub(r'\b[A-Z]{1,4}[\-]?[0-9]{3,8}\b', ' ', texto_nombre)
-        texto_nombre = re.sub(r'\s+', ' ', texto_nombre).strip()
+        texto_limpio = bloque[:limpiar_hasta]
+        texto_limpio = re.sub(r'\d{13}', ' ', texto_limpio)
+        texto_limpio = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', ' ', texto_limpio)
+        texto_limpio = re.sub(r'\b[FM]\b', ' ', texto_limpio)
+        texto_limpio = re.sub(r'^\s*\d{1,3}\s+', ' ', texto_limpio)
 
-        palabras = _RE_PALABRA.findall(texto_nombre)
-        palabras = [p.upper() for p in palabras if p.upper() not in _JUNK and len(p) >= 2]
+        chunks = re.split(r'\s{2,}', texto_limpio.strip())
+        palabras_nombre = []
+        for chunk in chunks:
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            for palabra in chunk.split():
+                if len(palabra) >= 2 and re.match(r'^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]*$', palabra, re.IGNORECASE):
+                    palabras_nombre.append(palabra.upper())
 
         ap = ""
         nom = ""
-        if len(palabras) >= 4:
-            mitad = len(palabras) // 2
-            ap = " ".join(palabras[:mitad])
-            nom = " ".join(palabras[mitad:])
-        elif len(palabras) == 3:
-            ap = " ".join(palabras[:2])
-            nom = palabras[2]
-        elif len(palabras) == 2:
-            ap = palabras[0]
-            nom = palabras[1]
-        elif len(palabras) == 1:
-            ap = palabras[0]
+        if len(palabras_nombre) >= 4:
+            mitad = len(palabras_nombre) // 2
+            ap = " ".join(palabras_nombre[:mitad])
+            nom = " ".join(palabras_nombre[mitad:])
+        elif len(palabras_nombre) == 3:
+            ap = " ".join(palabras_nombre[:2])
+            nom = palabras_nombre[2]
+        elif len(palabras_nombre) == 2:
+            ap = palabras_nombre[0]
+            nom = palabras_nombre[1]
+        elif len(palabras_nombre) == 1:
+            ap = palabras_nombre[0]
 
         if ap and nom:
             return {
                 "grado": grado_actual,
                 "seccion": seccion_actual,
-                "apellidos": ap,
-                "nombres": nom,
+                "apellidos": ap.upper(),
+                "nombres": nom.upper(),
                 "fecha_nac": fec,
                 "cui": cui,
                 "genero": gen,
