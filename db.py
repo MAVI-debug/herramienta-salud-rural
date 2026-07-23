@@ -245,6 +245,50 @@ def _run_migrations_sqlite(conn):
     except Exception:
         pass
 
+    # ── Migracion: columna es_admin ────────────────────────────────────
+    try:
+        conn.execute("ALTER TABLE usuarios ADD COLUMN es_admin INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    # Marcar tsr_demo como administrador
+    try:
+        conn.execute("UPDATE usuarios SET es_admin = 1 WHERE usuario = 'tsr_demo'")
+        conn.commit()
+    except Exception:
+        pass
+
+    # ── Migracion: columna fecha_corte en usuarios ─────────────────────
+    try:
+        from datetime import date as _date
+        _hoy = _date.today().strftime("%d/%m/%Y")
+        conn.execute(f"ALTER TABLE usuarios ADD COLUMN fecha_corte TEXT NOT NULL DEFAULT '{_hoy}'")
+    except sqlite3.OperationalError:
+        pass
+
+    # ── Migracion: tabla jornadas_realizadas ──────────────────────────
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS jornadas_realizadas (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id        INTEGER NOT NULL,
+                tipo_jornada      TEXT NOT NULL,
+                fecha_jornada     TEXT NOT NULL,
+                anio              INTEGER NOT NULL,
+                fecha_corte       TEXT NOT NULL,
+                total_entran_rango INTEGER NOT NULL DEFAULT 0,
+                total_no_entran   INTEGER NOT NULL DEFAULT 0,
+                total_f           INTEGER NOT NULL DEFAULT 0,
+                total_m           INTEGER NOT NULL DEFAULT 0,
+                total_general     INTEGER NOT NULL DEFAULT 0,
+                observaciones     TEXT DEFAULT '',
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+            )
+        """)
+        conn.commit()
+    except Exception:
+        pass
+
 
 def _run_migrations_pg(conn):
     cur = conn.cursor()
@@ -327,6 +371,43 @@ def _run_migrations_pg(conn):
                 cur.execute(f"ALTER TABLE {schema}.{table} DROP CONSTRAINT IF EXISTS {cname}")
             except Exception:
                 pass
+    except Exception:
+        pass
+
+    # ── Migracion: columna es_admin ────────────────────────────────────
+    try:
+        cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS es_admin INTEGER NOT NULL DEFAULT 0")
+        cur.execute("UPDATE usuarios SET es_admin = 1 WHERE usuario = 'tsr_demo'")
+    except Exception:
+        pass
+
+    # ── Migracion: columna fecha_corte en usuarios ─────────────────────
+    try:
+        from datetime import date as _date
+        _hoy = _date.today().strftime("%d/%m/%Y")
+        cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS fecha_corte TEXT NOT NULL DEFAULT %s", (_hoy,))
+    except Exception:
+        pass
+
+    # ── Migracion: tabla jornadas_realizadas ──────────────────────────
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS jornadas_realizadas (
+                id                SERIAL PRIMARY KEY,
+                usuario_id        INTEGER NOT NULL,
+                tipo_jornada      TEXT NOT NULL,
+                fecha_jornada     TEXT NOT NULL,
+                anio              INTEGER NOT NULL,
+                fecha_corte       TEXT NOT NULL,
+                total_entran_rango INTEGER NOT NULL DEFAULT 0,
+                total_no_entran   INTEGER NOT NULL DEFAULT 0,
+                total_f           INTEGER NOT NULL DEFAULT 0,
+                total_m           INTEGER NOT NULL DEFAULT 0,
+                total_general     INTEGER NOT NULL DEFAULT 0,
+                observaciones     TEXT DEFAULT '',
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+            )
+        """)
     except Exception:
         pass
 

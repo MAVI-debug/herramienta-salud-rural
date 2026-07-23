@@ -10,28 +10,6 @@
 
     <!-- ─── Tarjetas de Métricas ─────────────────── -->
     <div class="metricas">
-        <div class="metrica metrica-escuelas" onclick="toggleMetrica(this)">
-            <div class="metrica-inner">
-                <span class="metrica-icono">🏫</span>
-                <div class="metrica-contenido">
-                    <span class="metrica-num">{{ total_escuelas }}</span>
-                    <span class="metrica-label">Escuelas registradas</span>
-                </div>
-            </div>
-            <div class="metrica-expand">
-                <div class="metrica-expand-inner">
-                    {% set eorm = desglose_tipos.get('EORM', 0) %}
-                    {% set parv = desglose_tipos.get('PARVULOS', 0) %}
-                    <div class="stat-row"><span class="stat-label">EORM</span><span class="stat-highlight">{{ eorm }}</span></div>
-                    <div class="stat-row"><span class="stat-label">Párvulos</span><span class="stat-highlight">{{ parv }}</span></div>
-                    <div class="stat-row"><span class="stat-label">Mayor población</span><span class="stat-mint">{{ nombre_mayor }}</span></div>
-                    <div class="stat-row" style="padding-top:4px;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px;">
-                        <span class="stat-label">Comunidades/Caseríos</span>
-                        <span class="stat-highlight">{{ total_escuelas }}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
         <div class="metrica metrica-estudiantes" onclick="toggleMetrica(this)">
             <div class="metrica-inner">
                 <span class="metrica-icono">👥</span>
@@ -80,10 +58,10 @@
         </div>
 
         <div class="btn-accion-wrapper">
-            <a href="{{ url_for('listar_escuelas') }}" class="btn-accion btn-escuelas">
+            <button type="button" class="btn-accion btn-escuelas" id="btnToggleEscuelas">
                 <span class="accion-icono">🏫</span>
                 <span class="accion-texto">Escuelas</span>
-            </a>
+            </button>
         </div>
         <div class="btn-accion-wrapper">
             <a href="{{ url_for('consolidado') }}" class="btn-accion btn-consolidado">
@@ -93,11 +71,38 @@
         </div>
     </div>
 
-    <!-- ─── Resumen General ─────────────────────── -->
-    <div class="resumen-section">
-        <h3 class="resumen-title">Resumen General</h3>
-        <hr class="resumen-divider">
-        <p class="resumen-sub">Información y análisis general de las actividades realizadas.</p>
+    <!-- ─── Listado de Escuelas (inline) ─────────── -->
+    <div id="panelEscuelas" class="panel-escuelas" style="display:none;">
+        <div class="panel-escuelas-header">
+            <h3>Centros Educativos ({{ escuelas|length }})</h3>
+            <button type="button" class="btn-close-escuelas" id="btnCerrarEscuelas">✕</button>
+        </div>
+        {% if escuelas %}
+        <div class="tabla-scroll">
+            <table class="tabla consol-tabla">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Código</th>
+                        <th>Nombre del Centro Educativo</th>
+                        <th>Servicio de Salud</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in escuelas %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ e.codigo_centro }}</td>
+                        <td>{{ e.nombre_centro }}</td>
+                        <td>{{ e.servicio_salud }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="vacio">No hay escuelas registradas aún.</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
@@ -107,5 +112,22 @@
 function toggleMetrica(el) {
     el.classList.toggle('active');
 }
+
+(function() {
+    var btn = document.getElementById('btnToggleEscuelas');
+    var panel = document.getElementById('panelEscuelas');
+    var btnCerrar = document.getElementById('btnCerrarEscuelas');
+
+    if (btn && panel) {
+        btn.addEventListener('click', function() {
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+    if (btnCerrar && panel) {
+        btnCerrar.addEventListener('click', function() {
+            panel.style.display = 'none';
+        });
+    }
+})();
 </script>
 {% endblock %}

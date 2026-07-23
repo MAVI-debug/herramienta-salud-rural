@@ -14,6 +14,9 @@
                 <a href="{{ url_for('exportar_consolidado_total', fecha_corte=fecha_corte_str) }}" class="btn-descarga">
                     ⬇ Descargar Excel completo
                 </a>
+                {% if matriz %}
+                <button type="button" class="btn-jornada" id="btnAbrirJornada">📋 Guardar Jornada</button>
+                {% endif %}
             </div>
         </div>
 
@@ -185,6 +188,99 @@
             </table>
         </div>
     </div>
+
+    <!-- Modal Guardar Jornada -->
+    <div id="modalJornada" class="jornada-modal-overlay" style="display:none;">
+        <div class="jornada-modal-card">
+            <h3>📋 Guardar Jornada</h3>
+            <p class="jornada-modal-sub">Registra el resumen de la jornada actual en el historial.</p>
+            <form method="POST" action="{{ url_for('guardar_jornada') }}" id="formJornada">
+                <input type="hidden" name="fecha_corte" value="{{ fecha_corte_str }}">
+
+                <label>Tipo de intervención</label>
+                <select name="tipo_jornada" required>
+                    <option value="Desparasitacion">Desparasitación</option>
+                    <option value="Fluorizacion">Fluorización</option>
+                </select>
+
+                <label>Fecha de la jornada</label>
+                <input type="text" name="fecha_jornada" id="fechaJornadaInput"
+                       placeholder="DD/MM/AAAA" required
+                       value="{{ fecha_corte_str }}">
+
+                <label>Observaciones (opcional)</label>
+                <textarea name="observaciones" rows="2" placeholder="Ej: Primera jornada del año…"></textarea>
+
+                <div class="jornada-resumen">
+                    <strong>Resumen que se guardará:</strong>
+                    <div class="jornada-resumen-grid">
+                        <span>👶 Entan al rango (6–14):</span><span class="jr-valor">{{ totales.sub_6_14 }}</span>
+                        <span>🚫 No entran al rango:</span><span class="jr-valor">{{ totales.gral - totales.sub_6_14 }}</span>
+                        <span>👧 Niñas:</span><span class="jr-valor">{{ totales.tot_f }}</span>
+                        <span>👦 Niños:</span><span class="jr-valor">{{ totales.tot_m }}</span>
+                        <span>📊 Total general:</span><span class="jr-valor jr-total">{{ totales.gral }}</span>
+                    </div>
+                </div>
+
+                <div class="jornada-modal-btns">
+                    <button type="submit" class="btn-jornada">✅ Guardar Jornada</button>
+                    <button type="button" class="btn-jornada-cancel" id="btnCerrarJornada">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if jornadas_historial %}
+    <div class="consolidado-card">
+        <h2>📋 Jornadas Realizadas</h2>
+        {% set ns_years = namespace(anio_actual='') %}
+        {% for j in jornadas_historial %}
+            {% if j.anio|string != ns_years.anio_actual %}
+                {% set ns_years.anio_actual = j.anio|string %}
+                {% if not loop.first %}</tbody></table>{% endif %}
+                <h3 class="jornada-year-header">{{ j.anio }}</h3>
+                <table class="tabla consol-tabla jornada-hist-tabla">
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Fecha</th>
+                            <th>Fecha Corte</th>
+                            <th>Entan (6-14)</th>
+                            <th>No entran</th>
+                            <th>Niñas</th>
+                            <th>Niños</th>
+                            <th>Total</th>
+                            <th>Obs.</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            {% endif %}
+                        <tr>
+                            <td>
+                                {% if j.tipo_jornada == 'Desparasitacion' %}💊{% else %}🦷{% endif %}
+                                {{ j.tipo_jornada }}
+                            </td>
+                            <td>{{ j.fecha_jornada }}</td>
+                            <td>{{ j.fecha_corte }}</td>
+                            <td>{{ j.total_entran_rango }}</td>
+                            <td>{{ j.total_no_entran }}</td>
+                            <td>{{ j.total_f }}</td>
+                            <td>{{ j.total_m }}</td>
+                            <td><strong>{{ j.total_general }}</strong></td>
+                            <td class="jornada-obs-cell">{{ j.observaciones or '—' }}</td>
+                            <td>
+                                <form method="POST" action="{{ url_for('eliminar_jornada', jornada_id=j.id) }}" style="display:inline;">
+                                    <button type="submit" class="btn-eliminar" onclick="return confirm('¿Eliminar esta jornada?')" title="Eliminar">✕</button>
+                                </form>
+                            </td>
+                        </tr>
+        {% endfor %}
+                    </tbody>
+                </table>
+    </div>
+    {% endif %}
+
     {% else %}
     <div class="consolidado-card vacio-consol">
         <p>Aún no hay datos consolidados. Procesa un PDF desde Desparasitación o Fluorización.</p>
@@ -319,6 +415,22 @@ document.addEventListener('DOMContentLoaded', function() {
         if (fail > 0) html += ' &middot; <strong>' + fail + '</strong> con error';
         queueSummary.innerHTML = html;
         setTimeout(function() { location.reload(); }, 2200);
+    }
+
+    /* ─── Modal Guardar Jornada ─── */
+    var btnAbrir = document.getElementById('btnAbrirJornada');
+    var btnCerrar = document.getElementById('btnCerrarJornada');
+    var modal = document.getElementById('modalJornada');
+    if (btnAbrir && modal) {
+        btnAbrir.addEventListener('click', function() { modal.style.display = 'flex'; });
+    }
+    if (btnCerrar && modal) {
+        btnCerrar.addEventListener('click', function() { modal.style.display = 'none'; });
+    }
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) modal.style.display = 'none';
+        });
     }
 });
 

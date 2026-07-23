@@ -25,7 +25,9 @@
                 <div class="nav-avatar">
                     {{ (session.nombre_responsable or 'U')[:1].upper() }}
                 </div>
+                {% if session.get('es_admin') %}
                 <a href="{{ url_for('registrar_tsr') }}" class="nav-admin-link" title="Registrar TSR">➕</a>
+                {% endif %}
                 <a href="{{ url_for('perfil') }}" class="nav-admin-link" title="Mi Perfil">👤</a>
                 <span class="nav-divider"></span>
                 <a href="{{ url_for('logout') }}" class="nav-logout">Cerrar sesión</a>

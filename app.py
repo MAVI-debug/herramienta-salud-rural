@@ -92,8 +92,8 @@ def generar_demo():
     execute("DELETE FROM usuarios WHERE usuario = %s", ("tsr_demo",))
     execute("""
         INSERT INTO usuarios
-            (usuario, contrasena_hash, nombre_responsable, cargo, area_salud, distrito_salud)
-        VALUES (%s, %s, %s, %s, %s, %s)
+            (usuario, contrasena_hash, nombre_responsable, cargo, area_salud, distrito_salud, es_admin)
+        VALUES (%s, %s, %s, %s, %s, %s, 1)
     """, ("tsr_demo", hash_nuevo, "Andrés Romeo Mazariegos Vicente",
           "Técnico en Salud Rural (TSR)", "TOTONICAPÁN", "TOTONICAPÁN"))
     commit()
@@ -123,7 +123,7 @@ def login():
 
         fila = fetchone(
             "SELECT id, usuario, nombre_responsable, cargo, area_salud, "
-            "distrito_salud, contrasena_hash "
+            "distrito_salud, contrasena_hash, es_admin, fecha_corte "
             "FROM usuarios WHERE usuario = %s",
             (usuario,)
         )
@@ -137,6 +137,12 @@ def login():
             session["cargo"] = fila["cargo"]
             session["area_salud"] = fila["area_salud"]
             session["distrito_salud"] = fila["distrito_salud"]
+            session["es_admin"] = bool(fila["es_admin"])
+            fc_db = fila["fecha_corte"]
+            if fc_db:
+                session["fecha_corte"] = fc_db
+            else:
+                session["fecha_corte"] = date.today().strftime("%d/%m/%Y")
             flash(f"Bienvenido, {fila['nombre_responsable']}.", "success")
             return redirect(url_for("dashboard"))
         else:
@@ -161,6 +167,10 @@ def registrar_tsr():
     if "usuario_id" not in session:
         return login_requerido()
 
+    if not session.get("es_admin"):
+        flash("No tienes permisos para acceder a esta sección.", "danger")
+        return redirect(url_for("dashboard"))
+
     if request.method == "POST":
         nombre = request.form.get("nombre_completo", "").strip()
         usuario = request.form.get("usuario", "").strip()
@@ -180,11 +190,12 @@ def registrar_tsr():
             flash(f"El usuario «{usuario}» ya existe.", "danger")
             return render_template("registrar.html")
 
+        hoy_str = date.today().strftime("%d/%m/%Y")
         execute("""
             INSERT INTO usuarios
-                (usuario, contrasena_hash, nombre_responsable, cargo, area_salud, distrito_salud)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (usuario, hash_contrasena(contrasena), nombre, cargo, area_salud, distrito_salud))
+                (usuario, contrasena_hash, nombre_responsable, cargo, area_salud, distrito_salud, fecha_corte)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (usuario, hash_contrasena(contrasena), nombre, cargo, area_salud, distrito_salud, hoy_str))
         commit()
 
         flash(f"¡TSR «{nombre}» registrado exitosamente!", "success")
@@ -339,10 +350,6 @@ def dashboard():
 
     uid = session["usuario_id"]
 
-    total_escuelas = fetchone(
-        "SELECT COUNT(*) AS c FROM escuelas WHERE usuario_id = %s", (uid,)
-    )["c"]
-
     total_estudiantes = fetchone("""
         SELECT COUNT(*) AS c FROM estudiantes e
         WHERE e.usuario_id = %s AND EXISTS (
@@ -355,29 +362,9 @@ def dashboard():
     """, (uid,))["c"]
 
     escuelas = fetchall(
-        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
+        "SELECT codigo_centro, nombre_centro, servicio_salud FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
         (uid,)
     )
-
-    # Desglose por tipo de escuela
-    tipo_counts = fetchall(
-        "SELECT tipo_centro, COUNT(*) AS c FROM escuelas WHERE usuario_id = %s GROUP BY tipo_centro",
-        (uid,)
-    )
-    desglose_tipos = {r["tipo_centro"]: r["c"] for r in tipo_counts}
-
-    # Escuela con mayor número de alumnos (a través de registros_salud)
-    mayor_poblacion = fetchone("""
-        SELECT e.nombre_centro, COUNT(*) AS c
-        FROM registros_salud r
-        JOIN estudiantes s ON r.cui_estudiante = s.cui AND r.usuario_id = s.usuario_id
-        JOIN escuelas e ON r.codigo_centro = e.codigo_centro AND r.usuario_id = e.usuario_id
-        WHERE r.usuario_id = %s
-        GROUP BY e.nombre_centro, e.codigo_centro, e.usuario_id
-        ORDER BY c DESC
-        LIMIT 1
-    """, (uid,))
-    nombre_mayor = mayor_poblacion["nombre_centro"] if mayor_poblacion else "—"
 
     # Helper: subconsulta EXISTS para estudiantes vinculados a escuelas activas
     student_exists_join = """
@@ -445,11 +432,8 @@ def dashboard():
 
     return render_template(
         "dashboard.html",
-        total_escuelas=total_escuelas,
         total_estudiantes=total_estudiantes,
         escuelas=escuelas,
-        desglose_tipos=desglose_tipos,
-        nombre_mayor=nombre_mayor,
         total_m=total_m,
         total_f=total_f,
         en_rango=en_rango,
@@ -1080,8 +1064,8 @@ def sisca_descargar(job_id):
 def _obtener_fecha_corte(uid=None):
     if uid is None:
         uid = session.get("usuario_id", 0)
-    fila = fetchone("SELECT fecha_corte FROM registros_salud WHERE usuario_id = %s LIMIT 1", (uid,))
-    if fila:
+    fila = fetchone("SELECT fecha_corte FROM usuarios WHERE id = %s", (uid,))
+    if fila and fila.get("fecha_corte"):
         try:
             partes = fila["fecha_corte"].split("/")
             return date(int(partes[2]), int(partes[1]), int(partes[0]))
@@ -1180,21 +1164,30 @@ def consolidado():
     if "usuario_id" not in session:
         return login_requerido()
 
-    # Fecha de corte: query param > session > today
+    uid = session["usuario_id"]
+
+    # Fecha de corte: query param > session > DB > today
     q_fc = request.args.get("fecha_corte", "").strip()
     if q_fc:
         try:
             fecha_corte = datetime.strptime(q_fc, "%d/%m/%Y").date()
-            session["fecha_corte"] = fecha_corte.strftime("%d/%m/%Y")
+            fc_str = fecha_corte.strftime("%d/%m/%Y")
+            session["fecha_corte"] = fc_str
+            execute("UPDATE usuarios SET fecha_corte = %s WHERE id = %s",
+                    (fc_str, uid))
+            commit()
         except (ValueError, TypeError):
-            fecha_corte = _obtener_fecha_corte()
+            fecha_corte = _obtener_fecha_corte(uid)
+            session["fecha_corte"] = fecha_corte.strftime("%d/%m/%Y")
     elif "fecha_corte" in session:
         try:
             fecha_corte = datetime.strptime(session["fecha_corte"], "%d/%m/%Y").date()
         except (ValueError, TypeError):
-            fecha_corte = date.today()
+            fecha_corte = _obtener_fecha_corte(uid)
+            session["fecha_corte"] = fecha_corte.strftime("%d/%m/%Y")
     else:
-        fecha_corte = date.today()
+        fecha_corte = _obtener_fecha_corte(uid)
+        session["fecha_corte"] = fecha_corte.strftime("%d/%m/%Y")
 
     matriz, escuelas_detalle, totales = _consolidado_data(fecha_corte)
 
@@ -1216,12 +1209,91 @@ def consolidado():
                                ))
         ]
 
+    uid = session["usuario_id"]
+    jornadas_historial = fetchall("""
+        SELECT id, tipo_jornada, fecha_jornada, anio, fecha_corte,
+               total_entran_rango, total_no_entran, total_f, total_m,
+               total_general, observaciones
+        FROM jornadas_realizadas
+        WHERE usuario_id = %s
+        ORDER BY anio DESC, id DESC
+    """, (uid,))
+
     return render_template("consolidado.html",
                            matriz=matriz,
                            totales=totales,
                            fecha_corte=fecha_corte,
                            fecha_corte_iso=fecha_corte.isoformat(),
-                           fecha_corte_str=fecha_corte.strftime("%d/%m/%Y"))
+                           fecha_corte_str=fecha_corte.strftime("%d/%m/%Y"),
+                           jornadas_historial=jornadas_historial)
+
+
+@app.route("/guardar_jornada", methods=["POST"])
+def guardar_jornada():
+    if "usuario_id" not in session:
+        return login_requerido()
+
+    tipo_jornada = request.form.get("tipo_jornada", "Desparasitacion").strip()
+    fecha_jornada_str = request.form.get("fecha_jornada", "").strip()
+    observaciones = request.form.get("observaciones", "").strip()
+    fecha_corte_str = request.form.get("fecha_corte", "").strip()
+
+    if not fecha_jornada_str:
+        flash("Debes indicar la fecha de la jornada.", "danger")
+        return redirect(url_for("consolidado"))
+
+    try:
+        fecha_jornada = datetime.strptime(fecha_jornada_str, "%d/%m/%Y").date()
+    except (ValueError, TypeError):
+        try:
+            fecha_jornada = datetime.strptime(fecha_jornada_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            flash("Formato de fecha invalido.", "danger")
+            return redirect(url_for("consolidado"))
+
+    if fecha_corte_str:
+        try:
+            fecha_corte = datetime.strptime(fecha_corte_str, "%d/%m/%Y").date()
+        except (ValueError, TypeError):
+            fecha_corte = _obtener_fecha_corte()
+    else:
+        fecha_corte = _obtener_fecha_corte()
+
+    matriz, _, totales = _consolidado_data(fecha_corte)
+
+    sub_6_14 = totales["sub_6_14"]
+    total_gral = totales["gral"]
+    no_entran = total_gral - sub_6_14
+
+    uid = session["usuario_id"]
+    execute("""
+        INSERT INTO jornadas_realizadas
+            (usuario_id, tipo_jornada, fecha_jornada, anio, fecha_corte,
+             total_entran_rango, total_no_entran, total_f, total_m,
+             total_general, observaciones)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        uid, tipo_jornada, fecha_jornada.strftime("%d/%m/%Y"),
+        fecha_jornada.year, fecha_corte.strftime("%d/%m/%Y"),
+        sub_6_14, no_entran, totales["tot_f"], totales["tot_m"],
+        total_gral, observaciones,
+    ))
+    commit()
+
+    flash(f"Jornada de {tipo_jornada} del {fecha_jornada_str} guardada exitosamente.", "success")
+    return redirect(url_for("consolidado"))
+
+
+@app.route("/eliminar_jornada/<int:jornada_id>", methods=["POST"])
+def eliminar_jornada(jornada_id):
+    if "usuario_id" not in session:
+        return login_requerido()
+    uid = session["usuario_id"]
+    execute("DELETE FROM jornadas_realizadas WHERE id = %s AND usuario_id = %s",
+            (jornada_id, uid))
+    commit()
+    flash("Jornada eliminada.", "info")
+    return redirect(url_for("consolidado"))
 
 
 @app.route("/exportar_escuela/<codigo_centro>")

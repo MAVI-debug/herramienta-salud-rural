@@ -1675,3 +1675,195 @@ body {
 .registro-form button:active {
     transform: translateY(0);
 }
+
+/* ─── Botón Guardar Jornada ─── */
+.btn-jornada {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    background: linear-gradient(135deg, #46DFB1, #09D1C7);
+    border: none;
+    border-radius: 8px;
+    color: #1a2f45;
+    font-weight: 700;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: all 0.25s;
+}
+.btn-jornada:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(9,209,199,0.35);
+}
+
+/* ─── Modal Guardar Jornada ─── */
+.jornada-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10,15,30,0.65);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.jornada-modal-card {
+    background: var(--color-card, #162238);
+    border: 1px solid var(--color-border, #2a3a52);
+    border-radius: 14px;
+    padding: 28px 32px;
+    max-width: 500px;
+    width: 100%;
+    color: var(--color-text, #e4e8ef);
+}
+.jornada-modal-card h3 {
+    margin: 0 0 4px 0;
+    font-size: 1.15rem;
+    color: var(--color-cyan-bright, #09D1C7);
+}
+.jornada-modal-sub {
+    font-size: 0.85rem;
+    opacity: 0.65;
+    margin: 0 0 16px 0;
+}
+.jornada-modal-card label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin: 10px 0 3px;
+    color: var(--color-text, #e4e8ef);
+}
+.jornada-modal-card input,
+.jornada-modal-card select,
+.jornada-modal-card textarea {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--color-input-bg, #0f1b2d);
+    border: 1px solid var(--color-border, #2a3a52);
+    border-radius: 6px;
+    color: var(--color-text, #e4e8ef);
+    font-size: 0.88rem;
+    box-sizing: border-box;
+}
+.jornada-modal-card textarea {
+    resize: vertical;
+    min-height: 40px;
+}
+.jornada-resumen {
+    margin-top: 14px;
+    padding: 12px;
+    background: rgba(9,209,199,0.06);
+    border: 1px solid rgba(9,209,199,0.15);
+    border-radius: 8px;
+    font-size: 0.84rem;
+}
+.jornada-resumen strong {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--color-cyan-bright, #09D1C7);
+}
+.jornada-resumen-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 3px 12px;
+    align-items: center;
+}
+.jr-valor {
+    font-weight: 700;
+    text-align: right;
+}
+.jr-total {
+    font-size: 1rem;
+    color: var(--color-cyan-bright, #09D1C7);
+}
+.jornada-modal-btns {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+}
+.btn-jornada-cancel {
+    flex: 1;
+    padding: 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--color-border, #2a3a52);
+    border-radius: 8px;
+    color: var(--color-text, #e4e8ef);
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.btn-jornada-cancel:hover {
+    background: rgba(255,255,255,0.12);
+}
+
+/* ─── Historial Jornadas ─── */
+.jornada-year-header {
+    margin: 18px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid rgba(9,209,199,0.25);
+    color: var(--color-cyan-bright, #09D1C7);
+    font-size: 1rem;
+}
+.jornada-hist-tabla {
+    width: 100%;
+    font-size: 0.84rem;
+}
+.jornada-hist-tabla th {
+    background: rgba(9,209,199,0.08);
+    padding: 6px 8px;
+    text-align: left;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+.jornada-hist-tabla td {
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--color-border, #2a3a52);
+}
+.jornada-obs-cell {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.78rem;
+    opacity: 0.7;
+}
+
+/* ─── Panel Escuelas (inline en dashboard) ─── */
+.panel-escuelas {
+    margin-top: 18px;
+    background: var(--color-card, #162238);
+    border: 1px solid var(--color-border, #2a3a52);
+    border-radius: 14px;
+    padding: 18px 20px;
+    animation: fadeSlideIn 0.3s ease;
+}
+.panel-escuelas-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.panel-escuelas-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--color-cyan-bright, #09D1C7);
+}
+.btn-close-escuelas {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--color-border, #2a3a52);
+    border-radius: 6px;
+    color: var(--color-text, #e4e8ef);
+    width: 28px;
+    height: 28px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+.btn-close-escuelas:hover {
+    background: rgba(255,80,80,0.15);
+    border-color: rgba(255,80,80,0.3);
+}
