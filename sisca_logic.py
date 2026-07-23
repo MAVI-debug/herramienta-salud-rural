@@ -1,6 +1,6 @@
 """
-sisca_logic.py — Lógica de extracción PDF y generación SISCA
-==============================================================
+sisca_logic.py — Logica de extraccion PDF y generacion SISCA
+=============================================================
 Independiente de PyQt6; reutilizable desde Flask y desde CLI.
 """
 
@@ -72,7 +72,7 @@ def calcular_edad_a_fecha_corte(dia_nac, mes_nac, anio_nac, fecha_corte: date):
         return None
 
 # ---------------------------------------------------------------------------
-#  Extracción del PDF
+#  Extraccion del PDF
 # ---------------------------------------------------------------------------
 
 def extraer_alumnos_pdf(ruta_pdf: str) -> list:
@@ -85,21 +85,26 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     _RE_CUI = re.compile(r'\b(\d{13})\b')
     _RE_CODIGO_PERSONAL = re.compile(r'\b([A-Z]{1,4}[\-]?[0-9]{3,8})\b')
     _RE_DATE = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
-    _RE_GEN = re.compile(r'\b([FM])\b')
-    _RE_PALABRA = re.compile(r'[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]+', re.IGNORECASE)
-    _JUNK = {
-        'GUATEMALTECA', 'GUATEMALA', 'CUI', 'GENERO', 'GENÉRO', 'SEXO',
-        'FECHA', 'NACIMIENTO', 'NAC', 'LUGAR', 'NOMBRE', 'NOMBRES',
-        'APELLIDOS', 'APELLIDO', 'GRADO', 'SECCION', 'SECCIÓN',
-        'EDAD', 'TOTAL', 'TOTALES', 'PAIS', 'PAÍS', 'MUNICIPAL',
-        'DEPTO', 'DEPARTAMENTO', 'DISTRITO', 'MODULO', 'MÓDULO',
-        'CODIGO', 'CÓDIGO', 'ESCUELA', 'ESTABLECIMIENTO', 'INSTITUTO',
-        'COMUNIDAD', 'CASERIO', 'ALDEA', 'COLONIA', 'BARRIO',
-        'PLANILLA', 'NOMINAL', 'LISTADO', 'MINISTERIO', 'EDUCACION',
-        'EDUCACIÓN', 'REPUBLICA', 'REPÚBLICA', 'SALUD', 'JORNADA',
-        'MATUTINA', 'VESPERTINA', 'PRIMERA', 'SEGUNDA', 'DESCARGADO',
-        'SISTEMA', 'NORTE', 'SUR', 'ESTE', 'OESTE',
-    }
+    _RE_FILA = re.compile(
+        r'^(\d+)\s+'
+        r'.*?'
+        r'(\d{1,2}/\d{1,2}/\d{4})\s+'
+        r'([A-ZÁÉÍÓÚÑ\s]+?)\s{2,}'
+        r'([A-ZÁÉÍÓÚÑ\s]+?)\s{2,}'
+        r'.*?'
+        r'(\d{13})\s+'
+        r'([FM])\b',
+        re.MULTILINE
+    )
+    _RE_GEN = re.compile(r'\b(FEMENINO|FEM|MASCULINO|MASC|[FM])\b', re.IGNORECASE)
+
+    def _normalizar_genero(raw):
+        u = raw.upper()
+        if u.startswith("F"):
+            return "F"
+        if u.startswith("M"):
+            return "M"
+        return ""
 
     def _es_linea_header(linea):
         ln = linea.strip().upper()
@@ -129,8 +134,6 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             return False
         if _RE_CODIGO_PERSONAL.search(ln):
             return False
-        if _RE_DATE.search(ln) and not _RE_CUI.search(ln):
-            return False
         return False
 
     def _extraer_alumno_de_texto(bloque):
@@ -144,41 +147,51 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             if cui in _cuis_vistos:
                 return None
             _cuis_vistos.add(cui)
-            zona_ids = m_cui.end()
+            limpiar_hasta = m_cui.start()
         else:
             cui = ""
-            zona_ids = m_cod.end()
+            limpiar_hasta = m_cod.start()
 
         m_gen = _RE_GEN.search(bloque)
-        gen = m_gen.group(1) if m_gen else ""
+        gen = _normalizar_genero(m_gen.group(1)) if m_gen else ""
 
         m_fec = _RE_DATE.search(bloque)
         fec = m_fec.group(1) if m_fec else ""
 
-        texto_nombre = bloque[:m_cui.start() if m_cui else m_cod.start()]
-        texto_nombre = re.sub(r'\b\d{1,3}\b', ' ', texto_nombre)
-        texto_nombre = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', ' ', texto_nombre)
-        texto_nombre = re.sub(r'\b[FM]\b', ' ', texto_nombre)
-        texto_nombre = re.sub(r'\b[A-Z]{1,4}[\-]?[0-9]{3,8}\b', ' ', texto_nombre)
-        texto_nombre = re.sub(r'\s+', ' ', texto_nombre).strip()
+        texto_limpio = bloque[:limpiar_hasta]
+        texto_limpio = re.sub(r'\d{13}', ' ', texto_limpio)
+        texto_limpio = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', ' ', texto_limpio)
+        texto_limpio = re.sub(r'\b[Ff][Ee][Mm]?\b', ' ', texto_limpio)
+        texto_limpio = re.sub(r'\b[Ff][Ee][Mm][Ee][Nn][Ii][Nn][Oo]\b', ' ', texto_limpio)
+        texto_limpio = re.sub(r'\b[Mm][Aa][Ss][Cc]?\b', ' ', texto_limpio)
+        texto_limpio = re.sub(r'\b[Mm][Aa][Ss][Cc][Uu][Ll][Ii][Nn][Oo]\b', ' ', texto_limpio)
+        texto_limpio = re.sub(r'^\s*\d{1,3}\s+', ' ', texto_limpio)
+        texto_limpio = re.sub(r'\b[A-Z]{1,4}[\-]?[0-9]{3,8}\b', ' ', texto_limpio)
 
-        palabras = _RE_PALABRA.findall(texto_nombre)
-        palabras = [p.upper() for p in palabras if p.upper() not in _JUNK and len(p) >= 2]
+        chunks = re.split(r'\s{2,}', texto_limpio.strip())
+        palabras_nombre = []
+        for chunk in chunks:
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            for palabra in chunk.split():
+                if len(palabra) >= 2 and re.match(r'^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]*$', palabra, re.IGNORECASE):
+                    palabras_nombre.append(palabra.upper())
 
         ap = ""
         nom = ""
-        if len(palabras) >= 4:
-            mitad = len(palabras) // 2
-            ap = " ".join(palabras[:mitad])
-            nom = " ".join(palabras[mitad:])
-        elif len(palabras) == 3:
-            ap = " ".join(palabras[:2])
-            nom = palabras[2]
-        elif len(palabras) == 2:
-            ap = palabras[0]
-            nom = palabras[1]
-        elif len(palabras) == 1:
-            ap = palabras[0]
+        if len(palabras_nombre) >= 4:
+            mitad = len(palabras_nombre) // 2
+            ap = " ".join(palabras_nombre[:mitad])
+            nom = " ".join(palabras_nombre[mitad:])
+        elif len(palabras_nombre) == 3:
+            ap = " ".join(palabras_nombre[:2])
+            nom = palabras_nombre[2]
+        elif len(palabras_nombre) == 2:
+            ap = palabras_nombre[0]
+            nom = palabras_nombre[1]
+        elif len(palabras_nombre) == 1:
+            ap = palabras_nombre[0]
 
         if ap and nom:
             return {
@@ -206,6 +219,26 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             if val:
                 seccion_actual = val
 
+        for m in _RE_FILA.finditer(texto):
+            cui_f = m.group(5).strip()
+            if cui_f in _cuis_vistos:
+                continue
+            ap = m.group(3).strip()
+            nom = m.group(4).strip()
+            fec = m.group(2).strip()
+            gen = _normalizar_genero(m.group(6).strip())
+            if ap and nom:
+                _cuis_vistos.add(cui_f)
+                alumnos.append({
+                    "grado": grado_actual,
+                    "seccion": seccion_actual,
+                    "apellidos": ap,
+                    "nombres": nom,
+                    "fecha_nac": fec,
+                    "cui": cui_f,
+                    "genero": gen,
+                })
+
         lineas = texto.splitlines()
         i = 0
         while i < len(lineas):
@@ -225,11 +258,14 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             j = i + 1
             while j < len(lineas) and j <= i + 3:
                 prox = lineas[j].strip()
-                if prox and not _es_linea_header(prox):
-                    bloque += " " + prox
-                    j += 1
-                else:
+                if not prox:
                     break
+                if _es_linea_header(prox):
+                    break
+                if _RE_CUI.search(prox) or _RE_CODIGO_PERSONAL.search(prox):
+                    break
+                bloque += " " + prox
+                j += 1
 
             alumno = _extraer_alumno_de_texto(bloque)
             if alumno:
@@ -251,7 +287,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             del pagina
             _procesar_pagina_texto(texto)
         except Exception as e_pag:
-            _errores_pagina.append(f"Página {idx + 1}: {type(e_pag).__name__}")
+            _errores_pagina.append(f"Pagina {idx + 1}: {type(e_pag).__name__}")
         finally:
             del texto
             gc.collect()
@@ -265,7 +301,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
 
     return alumnos
 
-_ETIQUETAS_ENCABEZADO_PDF = ["Nombre:", "Dirección:", "Código:"]
+_ETIQUETAS_ENCABEZADO_PDF = ["Nombre:", u"Direcci\u00f3n:", u"C\u00f3digo:"]
 _MAX_LINEAS_ENCABEZADO = 15
 
 def extraer_metadatos_encabezado_pdf(ruta_pdf: str):
@@ -297,8 +333,8 @@ def extraer_metadatos_encabezado_pdf(ruta_pdf: str):
         return re.sub(r"\s+", " ", valor).strip()
 
     nombre = valor_tras_etiqueta("Nombre:", texto_top).upper()
-    direccion = valor_tras_etiqueta("Dirección:", texto_top).upper()
-    codigo_raw = valor_tras_etiqueta("Código:", texto_top).upper()
+    direccion = valor_tras_etiqueta(u"Direcci\u00f3n:", texto_top).upper()
+    codigo_raw = valor_tras_etiqueta(u"C\u00f3digo:", texto_top).upper()
     m = re.search(r"\d{1,2}-\d{1,2}-\d{2,5}-\d{1,3}", codigo_raw)
     codigo = m.group(0) if m else codigo_raw
     jornada = valor_tras_etiqueta("Jornada:", texto_top).upper()
@@ -317,7 +353,7 @@ def construir_nombre_escolar_completo(nombre: str, direccion: str) -> str:
     return combinado.upper()
 
 # ---------------------------------------------------------------------------
-#  Generación de la ficha SISCA (openpyxl)
+#  Generacion de la ficha SISCA (openpyxl)
 # ---------------------------------------------------------------------------
 
 def _aplicar_fuente_encabezado(celda):
@@ -400,7 +436,7 @@ def _duplicar_bloque_sisca(wb, indice_bloque: int):
                 ws_adelante.page_setup.paperSize = ws_adelante_base.page_setup.paperSize
                 ws_adelante.page_setup.fitToPage = ws_adelante_base.page_setup.fitToPage
     except Exception as e:
-        print(f"Nota: No se pudieron copiar propiedades de impresión adelante: {e}")
+        print(f"Nota: No se pudieron copiar propiedades de impresion adelante: {e}")
 
     try:
         if ws_atras_base and ws_atras:
@@ -410,7 +446,7 @@ def _duplicar_bloque_sisca(wb, indice_bloque: int):
                 ws_atras.page_setup.paperSize = ws_atras_base.page_setup.paperSize
                 ws_atras.page_setup.fitToPage = ws_atras_base.page_setup.fitToPage
     except Exception as e:
-        print(f"Nota: No se pudieron copiar propiedades de impresión atrás: {e}")
+        print(f"Nota: No se pudieron copiar propiedades de impresion atras: {e}")
 
     _fijar_formulas_subtotal_y_total(ws_atras, nombre_adelante)
     return ws_adelante, ws_atras
@@ -471,7 +507,7 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
                                  jornada="Primera Jornada") -> str:
     if not os.path.exists(ruta_plantilla):
         raise FileNotFoundError(
-            f"No se encontró la plantilla legal en:\n{ruta_plantilla}")
+            f"No se encontro la plantilla legal en:\n{ruta_plantilla}")
     wb = openpyxl.load_workbook(ruta_plantilla)
 
     total_bloques = max(1, math.ceil(len(alumnos_aptos) / SISCA_ALUMNOS_POR_BLOQUE))
@@ -507,13 +543,6 @@ def procesar_pdf_sisca(ruta_pdf: str, ruta_plantilla: str, ruta_salida_dir: str,
                        distrito_salud: str, servicio_salud: str,
                        tipo_centro: str, fecha_reporte_str: str = None,
                        fecha_corte: Optional[date] = None) -> dict:
-    """
-    Flujo completo:
-      1. Extraer alumnos y metadatos del PDF
-      2. Filtrar por edad (6-14 años) según fecha_corte
-      3. Generar la ficha SISCA en Excel
-      4. Retornar dict con ruta, metadatos de escuela y lista completa de alumnos
-    """
     if not fecha_reporte_str:
         hoy = date.today()
         fecha_reporte_str = f"{hoy.day:02d}/{hoy.month:02d}/{hoy.year}"
@@ -530,7 +559,6 @@ def procesar_pdf_sisca(ruta_pdf: str, ruta_plantilla: str, ruta_salida_dir: str,
     if not nombre_escuela:
         nombre_escuela = "ESCUELA SIN NOMBRE"
 
-    # Convertir todos los alumnos y filtrar aptos por edad
     todos_formateados = []
     aptos = []
     for a in alumnos:
@@ -592,7 +620,7 @@ def procesar_pdf_sisca(ruta_pdf: str, ruta_plantilla: str, ruta_salida_dir: str,
 
 
 # =============================================================================
-#  EXPORTACIÓN — CONSOLIDADO E HISTORIAL
+#  EXPORTACION — CONSOLIDADO E HISTORIAL
 # =============================================================================
 
 _STYLE_HEADER = Font(name="Arial", bold=True, color="FFFFFF", size=10)
@@ -612,9 +640,7 @@ GRADO_ORDEN = {
 }
 
 def _orden_grado(g):
-    """Retorna (base_order, sub_level) para ordenar por grado con sufijo numérico."""
     g_clean = _quitar_acentos(g.strip().upper())
-    # Extraer sufijo numérico (ej: "PARVULOS 3" → base="PARVULOS", sub=3)
     m = re.search(r'^([A-Z\s]+?)\s*(\d+)$', g_clean)
     if m:
         base = m.group(1).strip()
@@ -626,7 +652,6 @@ def _orden_grado(g):
     return (orden, sub)
 
 def _clave_grado_seccion(grado, seccion):
-    """Sort key para tuplas (grado, seccion)."""
     orden, sub = _orden_grado(grado)
     return (orden, sub, seccion or "")
 
@@ -639,7 +664,7 @@ def _clasificar_rango(edad):
         return "6_a_9"
     if edad <= 14:
         return "10_a_14"
-    return "15_a_19"  # 15 años o más → rango único
+    return "15_a_19"
 
 
 def _edad_desde_fecha_nac(fecha_nac_str, fecha_corte: date):
@@ -657,7 +682,6 @@ def _edad_desde_fecha_nac(fecha_nac_str, fecha_corte: date):
 def generar_excel_escuela(ruta_salida: str,
                           escuela_nombre: str, codigo: str,
                           alumnos: list, fecha_corte: date):
-    """Libro individual: listado nominal detallado de una escuela, agrupado por Grado/Sección."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Listado Nominal"
@@ -668,22 +692,19 @@ def generar_excel_escuela(ruta_salida: str,
     fill_alerta = PatternFill("solid", fgColor="FFC7CE")
     fuente_alerta = Font(name="Arial", size=10, color="9C0006")
 
-    # Encabezados fijos
     fila = 1
     for celda, val in [("A1", "Fecha de corte:"), ("C1", fecha_corte.strftime("%d/%m/%Y")),
                         ("A2", "Nombre de la Escuela:"), ("C2", escuela_nombre),
-                        ("A3", "Código:"), ("C3", codigo)]:
+                        ("A3", u"C\u00f3digo:"), ("C3", codigo)]:
         ws[celda] = val
         ws[celda].font = fuente_meta
 
-    # Columnas del listado
-    headers = ["No.", "Nombre", "CUI", "Género", "Día", "Mes", "Año",
+    headers = ["No.", "Nombre", "CUI", u"G\u00e9nero", u"D\u00eda", "Mes", u"A\u00f1o",
                "Edad", "<=5", "6-9", "10-14", "15-19"]
     ancho_cols = [6, 38, 16, 8, 6, 6, 8, 6, 6, 6, 8, 8]
     for i, w in enumerate(ancho_cols, 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # Agrupar por (grado, seccion) y ordenar
     grupos = {}
     for a in alumnos:
         key = (a.get("grado", "") or "", a.get("seccion", "") or "")
@@ -695,9 +716,8 @@ def generar_excel_escuela(ruta_salida: str,
 
     for (grado, seccion), grupo in sorted(grupos.items(),
                                           key=lambda item: _clave_grado_seccion(item[0][0], item[0][1])):
-        # Fila de subtítulo del grupo (ocupando todo el ancho)
         fila += 1
-        texto_grupo = f"{grado or 'SIN GRADO'} — Sección {seccion or 'SIN SECCIÓN'}"
+        texto_grupo = f"{grado or 'SIN GRADO'} \u2014 Secci\u00f3n {seccion or 'SIN SECCI\u00d3N'}"
         ws.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=12)
         cel_sub = ws.cell(fila, 1, texto_grupo)
         cel_sub.font = fuente_grupo
@@ -706,7 +726,6 @@ def generar_excel_escuela(ruta_salida: str,
         for c in range(1, 13):
             ws.cell(fila, c).fill = fill_grupo
 
-        # Encabezados de columna
         fila += 1
         for col, h in enumerate(headers, 1):
             c = ws.cell(fila, col, h)
@@ -714,7 +733,6 @@ def generar_excel_escuela(ruta_salida: str,
             c.fill = _FILL_HEADER
             c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-        # Alumnos del grupo (correlativo reinicia en 1)
         for i_local, a in enumerate(grupo, start=1):
             fila += 1
             edad = _edad_desde_fecha_nac(a.get("fecha_nac", ""), fecha_corte)
@@ -758,14 +776,8 @@ def generar_excel_consolidado(ruta_salida: str,
                               matriz: list,
                               escuelas_detalle: dict,
                               fecha_corte: date):
-    """
-    Libro completo: Hoja1 = matriz general, hojas siguientes = cada escuela.
-    `matriz`: lista de dicts con claves nombre, codigo y conteos por rango+genero.
-    `escuelas_detalle`: dict {codigo: [alumnos]}.
-    """
     wb = openpyxl.Workbook()
 
-    # ── Hoja 1: Matriz consolidada ────────────────────────────────────────
     ws = wb.active
     ws.title = "Consolidado"
 
@@ -786,12 +798,11 @@ def generar_excel_consolidado(ruta_salida: str,
     for i, w in enumerate(ancho_cols, 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ---- Encabezados combinados (Fila 4: bloques, Fila 5: M/F) ----
     merge_bloques = [
         ("A4:A5", "No."), ("B4:B5", "Establecimiento"),
-        ("C4:C5", "Código Centro"),
-        ("D4:E4", "Inscritos"), ("F4:G4", "≤ 5 años"), ("H4:I4", "6 - 9 años"),
-        ("J4:K4", "10 - 14 años"), ("L4:M4", "15 - 19 años"),
+        ("C4:C5", u"C\u00f3digo Centro"),
+        ("D4:E4", "Inscritos"), ("F4:G4", u"\u2264 5 a\u00f1os"), ("H4:I4", "6 - 9 a\u00f1os"),
+        ("J4:K4", "10 - 14 a\u00f1os"), ("L4:M4", "15 - 19 a\u00f1os"),
         ("N4:N5", "Total Escolarizados\n(6 a 14)"), ("O4:O5", "Total General"),
     ]
 
@@ -807,15 +818,13 @@ def generar_excel_consolidado(ruta_salida: str,
         cel.value = texto
         _estilar_encabezado(cel)
 
-    # Sub-etiquetas M/F en fila 5 (solo columnas no combinadas verticalmente)
-    ws.cell(5, 4, "M"); ws.cell(5, 5, "F")   # Inscritos
-    ws.cell(5, 6, "M"); ws.cell(5, 7, "F")   # ≤ 5 años
-    ws.cell(5, 8, "M"); ws.cell(5, 9, "F")   # 6 - 9 años
-    ws.cell(5, 10, "M"); ws.cell(5, 11, "F")  # 10 - 14 años
-    ws.cell(5, 12, "M"); ws.cell(5, 13, "F")  # 15 - 19 años
+    ws.cell(5, 4, "M"); ws.cell(5, 5, "F")
+    ws.cell(5, 6, "M"); ws.cell(5, 7, "F")
+    ws.cell(5, 8, "M"); ws.cell(5, 9, "F")
+    ws.cell(5, 10, "M"); ws.cell(5, 11, "F")
+    ws.cell(5, 12, "M"); ws.cell(5, 13, "F")
 
     fila = 5
-    # Una fila por establecimiento (suma de todos sus grados)
     no_global = 0
     for codigo, alumnos in escuelas_detalle.items():
         nombre_escuela = next((m["nombre"] for m in matriz if m["codigo"] == codigo), codigo)
@@ -866,7 +875,6 @@ def generar_excel_consolidado(ruta_salida: str,
             if no_global % 2 == 0:
                 cel.fill = _FILL_ALT
 
-    # ── Fila de TOTALES al final de la matriz ──────────────────────────────
     total_row = fila + 1
     fuente_total = Font(name="Arial", size=10, bold=True, color="FFFFFF")
     fill_total = PatternFill("solid", fgColor="213A58")
@@ -888,7 +896,6 @@ def generar_excel_consolidado(ruta_salida: str,
         cel.alignment = Alignment(horizontal="center", vertical="center")
         cel.border = thin_border
 
-    # ── Hojas siguientes: cada escuela (agrupadas por grado/sección) ──────
     fuente_grupo_cons = Font(bold=True, size=12, name="Arial", color="FFFFFF")
     fill_grupo_cons = PatternFill("solid", fgColor="0C6478")
     fill_alerta_cons = PatternFill("solid", fgColor="FFC7CE")
@@ -902,16 +909,15 @@ def generar_excel_consolidado(ruta_salida: str,
 
         ws_det["A1"] = "Listado Nominal"
         ws_det["A1"].font = Font(bold=True, size=12, name="Arial", color="0C6478")
-        ws_det["A2"] = f"Código: {codigo}"
+        ws_det["A2"] = f"C\u00f3digo: {codigo}"
         ws_det["A2"].font = Font(size=10, name="Arial")
 
-        det_headers = ["No.", "Nombre", "CUI", "Género",
-                       "Día", "Mes", "Año", "Edad", "<=5", "6-9", "10-14", "15-19"]
+        det_headers = ["No.", "Nombre", "CUI", u"G\u00e9nero",
+                       u"D\u00eda", "Mes", u"A\u00f1o", "Edad", "<=5", "6-9", "10-14", "15-19"]
         det_ancho = [6, 38, 16, 8, 6, 6, 8, 6, 6, 6, 8, 8]
         for i, w in enumerate(det_ancho, 1):
             ws_det.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-        # Agrupar alumnos por (grado, seccion)
         grupos_det = {}
         for a in alumnos:
             key = (a.get("grado", "") or "", a.get("seccion", "") or "")
@@ -923,9 +929,8 @@ def generar_excel_consolidado(ruta_salida: str,
 
         for (grado, seccion), grupo in sorted(grupos_det.items(),
                                               key=lambda item: _clave_grado_seccion(item[0][0], item[0][1])):
-            # Fila de subtítulo del grupo
             fila += 1
-            texto_grupo = f"{grado or 'SIN GRADO'} — Sección {seccion or 'SIN SECCIÓN'}"
+            texto_grupo = f"{grado or 'SIN GRADO'} \u2014 Secci\u00f3n {seccion or 'SIN SECCI\u00d3N'}"
             ws_det.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=12)
             cel_sub = ws_det.cell(fila, 1, texto_grupo)
             cel_sub.font = fuente_grupo_cons
@@ -934,7 +939,6 @@ def generar_excel_consolidado(ruta_salida: str,
             for c in range(1, 13):
                 ws_det.cell(fila, c).fill = fill_grupo_cons
 
-            # Encabezados de columna
             fila += 1
             for col, h in enumerate(det_headers, 1):
                 c = ws_det.cell(fila, col, h)
@@ -942,7 +946,6 @@ def generar_excel_consolidado(ruta_salida: str,
                 c.fill = _FILL_HEADER
                 c.alignment = Alignment(horizontal="center")
 
-            # Alumnos del grupo (correlativo reinicia en 1)
             for i_local, a in enumerate(grupo, start=1):
                 fila += 1
                 edad = _edad_desde_fecha_nac(a.get("fecha_nac", ""), fecha_corte)
@@ -976,13 +979,13 @@ def generar_excel_consolidado(ruta_salida: str,
 
 
 # =============================================================================
-#  GENERACIÓN — SIGSA-22 (Fluorización)
+#  GENERACION — SIGSA-22 (Fluorizacion)
 # =============================================================================
 
 _STUDENT_ROWS_START = 17
 def generar_reporte_sigsa22(ruta_plantilla, ruta_salida, datos):
     if not os.path.exists(ruta_plantilla):
-        raise FileNotFoundError(f"No se encontró la plantilla SIGSA-22 en:\n{ruta_plantilla}")
+        raise FileNotFoundError(f"No se encontro la plantilla SIGSA-22 en:\n{ruta_plantilla}")
 
     wb = openpyxl.load_workbook(ruta_plantilla)
     ws_template = wb.active
@@ -991,7 +994,6 @@ def generar_reporte_sigsa22(ruta_plantilla, ruta_salida, datos):
     estudiantes = datos.get("estudiantes", [])
     total_paginas = max(1, math.ceil(len(estudiantes) / MAX_FILAS))
 
-    # ── Crear todas las páginas (clonando desde la plantilla virgen) ────────
     paginas = []
     for p in range(total_paginas):
         if p == 0:
@@ -999,7 +1001,7 @@ def generar_reporte_sigsa22(ruta_plantilla, ruta_salida, datos):
         else:
             _asegurar_sheet_properties(ws_template)
             ws = wb.copy_worksheet(ws_template)
-        ws.title = f"SIGSA-22 Pág {p + 1}"
+        ws.title = f"SIGSA-22 Pag {p + 1}"
 
         try:
             ws.print_area = ws_template.print_area
@@ -1012,11 +1014,9 @@ def generar_reporte_sigsa22(ruta_plantilla, ruta_salida, datos):
 
         paginas.append(ws)
 
-    # ── Inyectar datos en cada página ───────────────────────────────────────
     fuente_premium = Font(name="Arial", size=14, bold=True, color="FF000000")
 
     for idx, ws in enumerate(paginas):
-        # ── Encabezado ──────────────────────────────────────────────────────────
         ws["C7"].value = datos.get("area_salud", "")
         ws["C7"].font = fuente_premium
         ws["T7"].value = datos.get("distrito_salud", "")
@@ -1034,7 +1034,6 @@ def generar_reporte_sigsa22(ruta_plantilla, ruta_salida, datos):
         ws["BN9"].value = datos.get("anio_reporte", "")
         ws["BN9"].font = fuente_premium
 
-        # ── Estudiantes de este bloque (fila 17 a 31) ───────────────────────
         inicio = idx * MAX_FILAS
         bloque = estudiantes[inicio:inicio + MAX_FILAS]
 
