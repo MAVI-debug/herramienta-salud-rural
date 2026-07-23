@@ -10,6 +10,8 @@ import hashlib
 import shutil
 import tempfile
 import zipfile
+import threading
+import uuid
 from datetime import timedelta, date, datetime
 
 from flask import (Flask, render_template, request, redirect,
@@ -37,6 +39,21 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PLANTILLA_PATH = os.path.join(BASE_DIR, "plantilla_sisca.xlsx")
 PLANTILLA_SIGSA22_PATH = os.path.join(BASE_DIR, "SIGSA_22_de_odontologia.xlsx")
 SALIDA_SISCA_DIR = os.path.join(BASE_DIR, "descargas_sisca")
+
+_jobs_sisca = {}
+_jobs_lock = threading.Lock()
+
+def _job_set(job_id, **kw):
+    with _jobs_lock:
+        _jobs_sisca.setdefault(job_id, {}).update(kw)
+
+def _job_get(job_id):
+    with _jobs_lock:
+        return dict(_jobs_sisca.get(job_id, {}))
+
+def _job_clean(job_id):
+    with _jobs_lock:
+        _jobs_sisca.pop(job_id, None)
 
 
 # Teardown: cierra la conexión híbrida
@@ -867,7 +884,7 @@ def procesar_sisca():
 
 
 # ---------------------------------------------------------------------------
-# Rutas — SISCA Masivo (ExportaciÃ³n MÃºltiple a ZIP)
+# Rutas — SISCA Masivo (Exportacion Multiple a ZIP, procesamiento async)
 # ---------------------------------------------------------------------------
 
 @app.route("/procesar_sisca_masiva", methods=["POST"])
@@ -885,7 +902,6 @@ def procesar_sisca_masiva():
     area_salud = request.form.get("area_salud", "").strip()
     distrito_salud = request.form.get("distrito_salud", "").strip()
     servicio_salud = request.form.get("servicio_salud", "").strip()
-    tipo_centro = request.form.get("tipo_centro", "PUBLICO").strip().upper()
     fecha_reporte = request.form.get("fecha_reporte", "").strip()
     fecha_corte_str = request.form.get("fecha_corte", "").strip()
     jornada = request.form.get("jornada", "Primera Jornada").strip()
@@ -909,7 +925,6 @@ def procesar_sisca_masiva():
     else:
         fecha_corte = date.today()
 
-    # ── Actualizar perfil del usuario ─────────────────────────────────────
     uid = session["usuario_id"]
     execute("""
         UPDATE usuarios
@@ -920,50 +935,119 @@ def procesar_sisca_masiva():
     session.update(nombre_responsable=responsable, cargo=cargo,
                    area_salud=area_salud, distrito_salud=distrito_salud)
 
-    # ── Generar ficha por cada escuela seleccionada ────────────────────────
-    rutas_generadas = []
+    job_id = uuid.uuid4().hex[:12]
+    _job_set(job_id,
+             estado="procesando",
+             total=len(codigos),
+             completados=0,
+             errores=[],
+             rutas=[],
+             zip_path=None,
+             usuario_id=uid,
+             fecha_corte=fecha_corte,
+             responsable=responsable,
+             cargo=cargo,
+             area_salud=area_salud,
+             distrito_salud=distrito_salud,
+             servicio_salud=servicio_salud,
+             jornada=jornada,
+             fecha_reporte=fecha_reporte if fecha_reporte else None,
+             codigos=list(codigos),
+             tipo_intervencion=tipo_intervencion,
+             )
+
+    hilo = threading.Thread(
+        target=_background_sisca_masivo,
+        args=(job_id,),
+        daemon=True,
+    )
+    hilo.start()
+
+    return jsonify({"job_id": job_id, "total": len(codigos)})
+
+
+def _background_sisca_masivo(job_id):
+    job = _job_get(job_id)
+    uid = job["usuario_id"]
+    rutas = []
     errores = []
-    for codigo in codigos:
+
+    for i, codigo in enumerate(job["codigos"]):
+        _job_set(job_id, completados=i, estado="procesando")
         ruta, nombre, err = _generar_sisca_para_escuela(
-            codigo, uid, fecha_corte, responsable, cargo,
-            area_salud, distrito_salud, servicio_salud, "PUBLICO", jornada,
-            fecha_reporte=fecha_reporte if fecha_reporte else None,
+            codigo, uid, job["fecha_corte"], job["responsable"],
+            job["cargo"], job["area_salud"], job["distrito_salud"],
+            job["servicio_salud"], "PUBLICO", job["jornada"],
+            fecha_reporte=job["fecha_reporte"],
         )
         if err:
             errores.append(err)
         else:
-            rutas_generadas.append(ruta)
+            rutas.append(ruta)
+        gc.collect()
 
-    if not rutas_generadas:
-        for e in errores:
-            flash(e, "danger")
-        return redirect(url_for("sisca_form"))
+    _job_set(job_id, completados=len(job["codigos"]), estado="empaquetando")
 
-    # ── Empaquetar en ZIP ─────────────────────────────────────────────────
-    import io, zipfile
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for ruta in rutas_generadas:
-            nombre_zip = os.path.basename(ruta)
-            zf.write(ruta, arcname=nombre_zip)
+    if rutas:
+        zip_dir = os.path.join(SALIDA_SISCA_DIR, job_id)
+        os.makedirs(zip_dir, exist_ok=True)
+        zip_path = os.path.join(zip_dir, f"SISCA_masivo_{job['tipo_intervencion']}.zip")
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for ruta in rutas:
+                zf.write(ruta, arcname=os.path.basename(ruta))
+        for ruta in rutas:
+            try:
+                os.remove(ruta)
+            except Exception:
+                pass
+        _job_set(job_id, zip_path=zip_path, estado="listo")
+    else:
+        _job_set(job_id, estado="sin_archivos")
 
-    for ruta in rutas_generadas:
-        try:
-            os.remove(ruta)
-        except Exception:
-            pass
+    _job_set(job_id, errores=errores)
+    gc.collect()
 
-    buf.seek(0)
 
-    for err in errores:
-        flash(err, "warning")
+@app.route("/sisca/progreso/<job_id>")
+def sisca_progreso(job_id):
+    job = _job_get(job_id)
+    if not job:
+        return jsonify({"error": "Trabajo no encontrado"}), 404
+    return jsonify({
+        "estado": job.get("estado", "desconocido"),
+        "total": job.get("total", 0),
+        "completados": job.get("completados", 0),
+        "errores": job.get("errores", []),
+    })
 
-    return send_file(
-        buf,
+
+@app.route("/sisca/descargar/<job_id>")
+def sisca_descargar(job_id):
+    job = _job_get(job_id)
+    if not job:
+        return jsonify({"error": "Trabajo no encontrado"}), 404
+    if job.get("estado") != "listo":
+        return jsonify({"error": "Aun no esta listo"}), 409
+    zip_path = job.get("zip_path")
+    if not zip_path or not os.path.exists(zip_path):
+        return jsonify({"error": "Archivo no encontrado"}), 404
+    tipo = job.get("tipo_intervencion", "desparasitacion")
+    response = send_file(
+        zip_path,
         as_attachment=True,
-        download_name=f"SISCA_masivo_{tipo_intervencion}.zip",
+        download_name=f"SISCA_masivo_{tipo}.zip",
         mimetype="application/zip",
     )
+    @response.call_on_close
+    def _cleanup():
+        try:
+            zip_dir = os.path.dirname(zip_path)
+            os.remove(zip_path)
+            os.rmdir(zip_dir)
+        except Exception:
+            pass
+        _job_clean(job_id)
+    return response
 
 
 # ---------------------------------------------------------------------------
