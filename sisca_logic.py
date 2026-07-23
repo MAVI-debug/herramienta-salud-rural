@@ -86,7 +86,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     _RE_CODIGO_PERSONAL = re.compile(r'\b([A-Z]{1,4}[\-]?[0-9]{3,8})\b')
     _RE_DATE = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
     _RE_GEN = re.compile(r'\b(FEMENINO|FEM|MASCULINO|MASC|[FM])\b', re.IGNORECASE)
-    _RE_PALABRA = re.compile(r'[A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ\.\-]+')
+    _RE_PALABRA = re.compile(r'[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]+', re.IGNORECASE)
     _JUNK = {
         'GUATEMALTECA', 'GUATEMALA', 'CUI', 'GENERO', 'GENÉRO', 'SEXO',
         'FECHA', 'NACIMIENTO', 'NAC', 'LUGAR', 'NOMBRE', 'NOMBRES',
@@ -98,7 +98,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         'PLANILLA', 'NOMINAL', 'LISTADO', 'MINISTERIO', 'EDUCACION',
         'EDUCACIÓN', 'REPUBLICA', 'REPÚBLICA', 'SALUD', 'JORNADA',
         'MATUTINA', 'VESPERTINA', 'PRIMERA', 'SEGUNDA', 'DESCARGADO',
-        'SISTEMA', 'NORTE', 'SUR', 'ESTE', 'OESTE', 'M', 'F',
+        'SISTEMA', 'NORTE', 'SUR', 'ESTE', 'OESTE',
     }
 
     def _es_linea_header(linea):
@@ -160,6 +160,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         texto_nombre = bloque[:m_cui.start() if m_cui else m_cod.start()]
         texto_nombre = re.sub(r'\b\d{1,3}\b', ' ', texto_nombre)
         texto_nombre = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', ' ', texto_nombre)
+        texto_nombre = re.sub(r'\b[FM]\b', ' ', texto_nombre)
         texto_nombre = re.sub(r'\b[A-Z]{1,4}[\-]?[0-9]{3,8}\b', ' ', texto_nombre)
         texto_nombre = re.sub(r'\s+', ' ', texto_nombre).strip()
 
