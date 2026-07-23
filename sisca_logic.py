@@ -97,6 +97,22 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         re.MULTILINE
     )
     _RE_GEN = re.compile(r'\b(FEMENINO|FEM|MASCULINO|MASC|[FM])\b', re.IGNORECASE)
+    _RE_JUNK_PALABRA = re.compile(
+        r'\b(GUATEMALTECA|GUATEMALA|NACIONALIDAD|NACIONAL|IDENTIFICACION|'
+        r'IDENTIFICAR|DOCUMENTO|DOC|PLANILLA|NOMINAL|LISTADO|MINISTERIO|'
+        r'EDUCACION|EDUCACIÓN|REPUBLICA|REPÚBLICA|SALUD|JORNADA|'
+        r'MATUTINA|VESPERTINA|PRIMERA|SEGUNDA|DESCARGADO|SISTEMA|'
+        r'TOTAL|TOTALES|RESUMEN|EDAD|EDADES|PAIS|PAÍS|DEPTO|'
+        r'DEPARTAMENTO|MUNICIPAL|DISTRITO|MODULO|MÓDULO|COMUNIDAD|'
+        r'CASERIO|ALDEA|COLONIA|BARRIO|NORTE|SUR|ESTE|OESTE|'
+        r'ESCUELA|ESTABLECIMIENTO|INSTITUTO|CODIGO|CÓDIGO|DIRECCION|'
+        r'DIRECCIÓN|GRADO|SECCION|SECCIÓN|SEXO|NOMBRE|NOMBRES|'
+        r'APELLIDO|APELLIDOS|FECHA|NACIMIENTO|NAC|LUGAR|'
+        r'GENERO|GENÉRO|CUI|DIRECTOR|ENCARGADO|HORA|'
+        r'FEMENINO|FEM|F|MASCULINO|MASC|M|'
+        r'No|Nº|PAGINA|PÁGINA|SUBTOTAL|TOTAL GENERAL|TOTAL DE)\b',
+        re.IGNORECASE
+    )
 
     def _normalizar_genero(raw):
         u = raw.upper()
@@ -105,6 +121,17 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         if u.startswith("M"):
             return "M"
         return ""
+
+    def _limpiar_nombre(texto):
+        t = texto
+        t = re.sub(r'\d{13}', ' ', t)
+        t = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', ' ', t)
+        t = re.sub(r'\b\d{1,8}\b', ' ', t)
+        t = re.sub(r'[/]', ' ', t)
+        t = _RE_JUNK_PALABRA.sub(' ', t)
+        t = re.sub(r'\b[A-Z]{1,4}[\-]?[0-9]{3,8}\b', ' ', t)
+        t = re.sub(r'\s+', ' ', t).strip()
+        return t
 
     def _es_linea_header(linea):
         ln = linea.strip().upper()
@@ -159,16 +186,9 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         fec = m_fec.group(1) if m_fec else ""
 
         texto_limpio = bloque[:limpiar_hasta]
-        texto_limpio = re.sub(r'\d{13}', ' ', texto_limpio)
-        texto_limpio = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', ' ', texto_limpio)
-        texto_limpio = re.sub(r'\b[Ff][Ee][Mm]?\b', ' ', texto_limpio)
-        texto_limpio = re.sub(r'\b[Ff][Ee][Mm][Ee][Nn][Ii][Nn][Oo]\b', ' ', texto_limpio)
-        texto_limpio = re.sub(r'\b[Mm][Aa][Ss][Cc]?\b', ' ', texto_limpio)
-        texto_limpio = re.sub(r'\b[Mm][Aa][Ss][Cc][Uu][Ll][Ii][Nn][Oo]\b', ' ', texto_limpio)
-        texto_limpio = re.sub(r'^\s*\d{1,3}\s+', ' ', texto_limpio)
-        texto_limpio = re.sub(r'\b[A-Z]{1,4}[\-]?[0-9]{3,8}\b', ' ', texto_limpio)
+        texto_limpio = _limpiar_nombre(texto_limpio)
 
-        chunks = re.split(r'\s{2,}', texto_limpio.strip())
+        chunks = re.split(r'\s{2,}', texto_limpio)
         palabras_nombre = []
         for chunk in chunks:
             chunk = chunk.strip()
@@ -223,8 +243,8 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             cui_f = m.group(5).strip()
             if cui_f in _cuis_vistos:
                 continue
-            ap = m.group(3).strip()
-            nom = m.group(4).strip()
+            ap = _limpiar_nombre(m.group(3).strip())
+            nom = _limpiar_nombre(m.group(4).strip())
             fec = m.group(2).strip()
             gen = _normalizar_genero(m.group(6).strip())
             if ap and nom:
