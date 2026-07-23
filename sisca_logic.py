@@ -86,7 +86,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     _RE_CODIGO_PERSONAL = re.compile(r'\b([A-Z]{1,4}[\-]?[0-9]{3,8})\b')
     _RE_DATE = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
     _RE_GEN = re.compile(r'\b(FEMENINO|FEM|MASCULINO|MASC|[FM])\b', re.IGNORECASE)
-    _RE_PALABRA = re.compile(r'[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]+', re.IGNORECASE)
+    _RE_PALABRA = re.compile(r'[A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ\.\-]+')
     _JUNK = {
         'GUATEMALTECA', 'GUATEMALA', 'CUI', 'GENERO', 'GENÉRO', 'SEXO',
         'FECHA', 'NACIMIENTO', 'NAC', 'LUGAR', 'NOMBRE', 'NOMBRES',
@@ -98,7 +98,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         'PLANILLA', 'NOMINAL', 'LISTADO', 'MINISTERIO', 'EDUCACION',
         'EDUCACIÓN', 'REPUBLICA', 'REPÚBLICA', 'SALUD', 'JORNADA',
         'MATUTINA', 'VESPERTINA', 'PRIMERA', 'SEGUNDA', 'DESCARGADO',
-        'SISTEMA', 'NORTE', 'SUR', 'ESTE', 'OESTE',
+        'SISTEMA', 'NORTE', 'SUR', 'ESTE', 'OESTE', 'M', 'F',
     }
 
     def _es_linea_header(linea):
@@ -129,8 +129,6 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             return False
         if _RE_CODIGO_PERSONAL.search(ln):
             return False
-        if _RE_DATE.search(ln) and not _RE_CUI.search(ln):
-            return False
         return False
 
     def _extraer_alumno_de_texto(bloque):
@@ -144,10 +142,8 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             if cui in _cuis_vistos:
                 return None
             _cuis_vistos.add(cui)
-            zona_ids = m_cui.end()
         else:
             cui = ""
-            zona_ids = m_cod.end()
 
         m_gen = _RE_GEN.search(bloque)
         gen_raw = m_gen.group(1).upper() if m_gen else ""
@@ -156,7 +152,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         elif gen_raw.startswith("M"):
             gen = "M"
         else:
-            gen = gen_raw
+            gen = ""
 
         m_fec = _RE_DATE.search(bloque)
         fec = m_fec.group(1) if m_fec else ""
@@ -164,7 +160,6 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         texto_nombre = bloque[:m_cui.start() if m_cui else m_cod.start()]
         texto_nombre = re.sub(r'\b\d{1,3}\b', ' ', texto_nombre)
         texto_nombre = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', ' ', texto_nombre)
-        texto_nombre = re.sub(r'\b[FM]\b', ' ', texto_nombre)
         texto_nombre = re.sub(r'\b[A-Z]{1,4}[\-]?[0-9]{3,8}\b', ' ', texto_nombre)
         texto_nombre = re.sub(r'\s+', ' ', texto_nombre).strip()
 
