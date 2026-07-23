@@ -85,7 +85,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     _RE_CUI = re.compile(r'\b(\d{13})\b')
     _RE_CODIGO_PERSONAL = re.compile(r'\b([A-Z]{1,4}[\-]?[0-9]{3,8})\b')
     _RE_DATE = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
-    _RE_GEN = re.compile(r'\b(FEMENINO|FEM|MASCULINO|MASC|[FM])\b', re.IGNORECASE)
+    _RE_GEN = re.compile(r'\b([FM])\b')
     _RE_PALABRA = re.compile(r'[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]+', re.IGNORECASE)
     _JUNK = {
         'GUATEMALTECA', 'GUATEMALA', 'CUI', 'GENERO', 'GENÉRO', 'SEXO',
@@ -150,13 +150,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             zona_ids = m_cod.end()
 
         m_gen = _RE_GEN.search(bloque)
-        gen_raw = m_gen.group(1).upper() if m_gen else ""
-        if gen_raw.startswith("F"):
-            gen = "F"
-        elif gen_raw.startswith("M"):
-            gen = "M"
-        else:
-            gen = gen_raw
+        gen = m_gen.group(1) if m_gen else ""
 
         m_fec = _RE_DATE.search(bloque)
         fec = m_fec.group(1) if m_fec else ""
