@@ -82,10 +82,8 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     _errores_pagina = []
     _cuis_vistos = set()
 
-    _RE_CUI = re.compile(r'\b(\d{13})\b')
-    _RE_CODIGO_PERSONAL = re.compile(r'\b([A-Z]{1,4}[\-]?[0-9]{3,8})\b')
-    _RE_DATE = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
-    _RE_GEN = re.compile(r'\b(FEMENINO|FEM|MASCULINO|MASC|[FM])\b', re.IGNORECASE)
+    _RE_DATE = re.compile(r'(\d{2}/\d{2}/\d{4})')
+    _RE_GEN = re.compile(r'\b(FEMENINO|FEM|MASCULINO|MASC)\b', re.IGNORECASE)
     _RE_JUNK_PALABRA = re.compile(
         r'\b(GUATEMALTECA|GUATEMALA|NACIONALIDAD|NACIONAL|IDENTIFICACION|'
         r'IDENTIFICAR|DOCUMENTO|DOC|PLANILLA|NOMINAL|LISTADO|MINISTERIO|'
@@ -97,12 +95,60 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         r'ESCUELA|ESTABLECIMIENTO|INSTITUTO|CODIGO|CÓDIGO|DIRECCION|'
         r'DIRECCIÓN|GRADO|SECCION|SECCIÓN|SEXO|NOMBRE|NOMBRES|'
         r'APELLIDO|APELLIDOS|FECHA|NACIMIENTO|NAC|LUGAR|'
-        r'GENERO|GENÉRO|CUI|DIRECTOR|ENCARGADO|HORA|'
+        r'GENERO|GENÉRO|CUI|DIRECTOR|ENCARGADO|HORA|PASAPORTE|'
         r'FEMENINO|FEM|F|MASCULINO|MASC|M|'
         r'No|Nº|PAGINA|PÁGINA|SUBTOTAL|TOTAL GENERAL|TOTAL DE)\b',
         re.IGNORECASE
     )
-    _RE_NUM_ORDEN = re.compile(r'^\s*(\d{1,3})\s+')
+
+    _RE_INICIO_ALUMNO = re.compile(
+        r'^(\d{1,3})\s+'              
+        r'([A-Z]{1,4}[\-]?[0-9]{3,8}[A-Z]{0,4})'  
+        r'\s+'                         
+        r'(.+)'                        
+    )
+
+    _RE_INICIO_ALUMNO_SIN_COD = re.compile(
+        r'^(\d{1,3})\s+'
+        r'([A-ZÁÉÍÓÚÑ])'
+    )
+
+    _RE_HEADER_LINE = re.compile(
+        r'^\s*$|'
+        r'LISTADO DE ALUMNOS|'
+        r'Sistema de Registro|'
+        r'Fecha de Impresi|'
+        r'^C.digo:|'
+        r'^Nombre:|'
+        r'^Direcci|'
+        r'^Departamento:|'
+        r'^Municipio:|'
+        r'^Nivel:|'
+        r'^Jornada:|'
+        r'^Ciclo Lectivo|'
+        r'^Sector:|'
+        r'^P.gina|'
+        r'^\d{1,3}$|'
+        r'^Grado:|'
+        r'^Seccion:|'
+        r'^Secci|'
+        r'^Docente:|'
+        r'^No C.digo|'
+        r'^Personal$|'
+        r'^Apellidos Nombres|'
+        r'^Nacimiento$|'
+        r'^Nacionalidad Documento|'
+        r'^Identificaci|'
+        r'^No\. de Doc|'
+        r'^G.nero$|'
+        r'^Resumen de Secci|'
+        r'^Alumnos por Documento|'
+        r'^Nacionalidad CUI|'
+        r'^Guatemalteca \d|'
+        r'^Extranjera \d|'
+        r'^TOTAL \d',
+        re.IGNORECASE
+    )
 
     def _normalizar_genero(raw):
         u = raw.upper()
@@ -119,7 +165,7 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         t = re.sub(r'\b\d{1,8}\b', ' ', t)
         t = re.sub(r'[/]', ' ', t)
         t = _RE_JUNK_PALABRA.sub(' ', t)
-        t = re.sub(r'\b[A-Z]{1,4}[\-]?[0-9]{3,8}\b', ' ', t)
+        t = re.sub(r'\b[A-Z]{1,4}[\-]?[0-9]{3,8}[A-Z]{0,4}\b', ' ', t)
         t = re.sub(r'\s+', ' ', t).strip()
         return t
 
@@ -131,7 +177,9 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             if not chunk:
                 continue
             for palabra in chunk.split():
-                if len(palabra) >= 2 and re.match(r'^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]*$', palabra, re.IGNORECASE):
+                if (len(palabra) >= 2
+                        and re.match(r'^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]*$',
+                                     palabra, re.IGNORECASE)):
                     palabras.append(palabra.upper())
         ap = ""
         nom = ""
@@ -149,15 +197,14 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             ap = palabras[0]
         return ap, nom
 
-    def _extraer_genero_fecha(texto_zona):
-        m_fec = _RE_DATE.search(texto_zona)
-        fec = m_fec.group(1) if m_fec else ""
-        m_gen = _RE_GEN.search(texto_zona)
-        gen = _normalizar_genero(m_gen.group(1)) if m_gen else ""
-        return gen, fec
+    def _es_linea_header(ln):
+        return bool(_RE_HEADER_LINE.search(ln))
 
     def _procesar_pagina_texto(texto):
         nonlocal grado_actual, seccion_actual
+
+        if 'Resumen de Secci' in texto:
+            return
 
         m_g = re.search(r'Grado:\s*(.+?)(?:\s+Seccion:|$)', texto, re.IGNORECASE)
         m_s = re.search(r'Seccion:\s*(\S+)', texto, re.IGNORECASE)
@@ -170,137 +217,87 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             if val:
                 seccion_actual = val
 
-        anchors = []
-        for m in _RE_CUI.finditer(texto):
-            anchors.append((m.start(), m.end(), m.group(1), "cui"))
-        for m in _RE_CODIGO_PERSONAL.finditer(texto):
-            anchors.append((m.start(), m.end(), m.group(1), "cod"))
-        anchors.sort(key=lambda x: x[0])
+        lineas = texto.splitlines()
 
-        for idx_a, (a_start, a_end, a_val, a_tipo) in enumerate(anchors):
-            if a_tipo == "cui" and a_val in _cuis_vistos:
-                continue
-            if a_tipo == "cod" and f"COD-{a_val}" in _cuis_vistos:
+        bloques = []
+        bloque_actual = None
+
+        for ln in lineas:
+            ln_s = ln.strip()
+
+            if _es_linea_header(ln_s):
                 continue
 
-            prev_end = anchors[idx_a - 1][1] if idx_a > 0 else 0
-            zona_nombre_raw = texto[prev_end:a_start]
+            m_con_cod = _RE_INICIO_ALUMNO.match(ln_s)
+            if m_con_cod:
+                if bloque_actual is not None:
+                    bloques.append(bloque_actual)
+                bloque_actual = {
+                    "num_ord": m_con_cod.group(1),
+                    "cod_personal": m_con_cod.group(2),
+                    "lineas": [m_con_cod.group(3)],
+                }
+                continue
+
+            m_sin_cod = _RE_INICIO_ALUMNO_SIN_COD.match(ln_s)
+            if m_sin_cod:
+                resto = ln_s[m_sin_cod.end():]
+                if bloque_actual is not None:
+                    bloques.append(bloque_actual)
+                bloque_actual = {
+                    "num_ord": m_sin_cod.group(1),
+                    "cod_personal": "",
+                    "lineas": [resto.strip()],
+                }
+                continue
+
+            if bloque_actual is not None:
+                bloque_actual["lineas"].append(ln_s)
+
+        if bloque_actual is not None:
+            bloques.append(bloque_actual)
+
+        for bloque in bloques:
+            num_ord = bloque["num_ord"]
+            cod_personal = bloque["cod_personal"]
+            lineas_alumno = bloque["lineas"]
+
+            texto_bloque = " ".join(lineas_alumno)
+
+            m_fec = _RE_DATE.search(texto_bloque)
+            fec = m_fec.group(1) if m_fec else ""
+
+            m_gen = _RE_GEN.search(texto_bloque)
+            gen = _normalizar_genero(m_gen.group(1)) if m_gen else ""
+
+            cui = ""
+            m_cui = re.search(r'\bCUI\s+(\d{13})\b', texto_bloque)
+            if m_cui:
+                cui = m_cui.group(1)
+
             lineas_nombre = []
-            for ln in zona_nombre_raw.splitlines():
-                ln_s = ln.strip()
-                if not ln_s:
-                    continue
-                if re.search(r'Grado\s*:', ln_s, re.IGNORECASE):
-                    continue
-                if re.search(r'Seccion\s*:', ln_s, re.IGNORECASE):
-                    continue
-                lineas_nombre.append(ln_s)
+            for ln in lineas_alumno:
+                if _RE_DATE.search(ln):
+                    break
+                lineas_nombre.append(ln)
+
             texto_nombre = " ".join(lineas_nombre)
             texto_limpio = _limpiar_nombre(texto_nombre)
             ap, nom = _extraer_nombre_de_texto(texto_limpio)
 
-            idx_linea_inicio = texto.rfind('\n', 0, a_start) + 1
-            idx_linea_fin = texto.find('\n', a_end)
-            if idx_linea_fin == -1:
-                idx_linea_fin = len(texto)
-            linea_anchor = texto[idx_linea_inicio:idx_linea_fin]
+            dedup_key = cui or cod_personal or f"{num_ord}-{grado_actual}-{seccion_actual}"
 
-            idx_zona_gen_fec = min(a_end + 200, len(texto))
-            zona_gen_fec = texto[a_start:idx_zona_gen_fec]
-            gen, fec = _extraer_genero_fecha(linea_anchor + " " + zona_gen_fec)
-
-            if a_tipo == "cui":
-                if ap and nom:
-                    _cuis_vistos.add(a_val)
-                    alumnos.append({
-                        "grado": grado_actual,
-                        "seccion": seccion_actual,
-                        "apellidos": ap,
-                        "nombres": nom,
-                        "fecha_nac": fec,
-                        "cui": a_val,
-                        "genero": gen,
-                    })
-            else:
-                if ap and nom:
-                    cod_key = f"COD-{a_val}"
-                    _cuis_vistos.add(cod_key)
-                    alumnos.append({
-                        "grado": grado_actual,
-                        "seccion": seccion_actual,
-                        "apellidos": ap,
-                        "nombres": nom,
-                        "fecha_nac": fec,
-                        "cui": "",
-                        "genero": gen,
-                    })
-
-        if anchors:
-            ultimo_fin = anchors[-1][1]
-            zona_cola = texto[ultimo_fin:]
-        else:
-            zona_cola = texto
-        _extraer_alumnos_sin_anchor(zona_cola, _cuis_vistos)
-
-    def _extraer_alumnos_sin_anchor(texto_zona, cuis_vistos):
-        if not texto_zona:
-            return
-
-        lineas = texto_zona.splitlines()
-        buf_lineas = []
-        idx = 0
-        while idx < len(lineas):
-            linea = lineas[idx].strip()
-            if not linea:
-                if buf_lineas:
-                    _procesar_buffer_sin_anchor(buf_lineas, cuis_vistos)
-                    buf_lineas = []
-                idx += 1
-                continue
-
-            if _RE_CUI.search(linea) or _RE_CODIGO_PERSONAL.search(linea):
-                if buf_lineas:
-                    _procesar_buffer_sin_anchor(buf_lineas, cuis_vistos)
-                    buf_lineas = []
-                idx += 1
-                continue
-
-            m_num = _RE_NUM_ORDEN.match(linea)
-            if m_num:
-                if buf_lineas:
-                    _procesar_buffer_sin_anchor(buf_lineas, cuis_vistos)
-                    buf_lineas = []
-                buf_lineas.append(linea)
-            elif buf_lineas:
-                buf_lineas.append(linea)
-            idx += 1
-
-        if buf_lineas:
-            _procesar_buffer_sin_anchor(buf_lineas, cuis_vistos)
-
-    def _procesar_buffer_sin_anchor(buf_lineas, cuis_vistos):
-        if len(buf_lineas) < 1:
-            return
-
-        texto_completo = " ".join(buf_lineas)
-        gen, fec = _extraer_genero_fecha(texto_completo)
-
-        if not gen and not fec:
-            return
-
-        texto_limpio = _limpiar_nombre(texto_completo)
-        ap, nom = _extraer_nombre_de_texto(texto_limpio)
-
-        if ap and nom:
-            alumnos.append({
-                "grado": grado_actual,
-                "seccion": seccion_actual,
-                "apellidos": ap,
-                "nombres": nom,
-                "fecha_nac": fec,
-                "cui": "",
-                "genero": gen,
-            })
+            if ap and nom and dedup_key not in _cuis_vistos:
+                _cuis_vistos.add(dedup_key)
+                alumnos.append({
+                    "grado": grado_actual,
+                    "seccion": seccion_actual,
+                    "apellidos": ap,
+                    "nombres": nom,
+                    "fecha_nac": fec,
+                    "cui": cui,
+                    "genero": gen,
+                })
 
     try:
         reader = pypdf.PdfReader(ruta_pdf)
