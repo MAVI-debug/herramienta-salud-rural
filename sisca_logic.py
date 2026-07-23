@@ -277,7 +277,11 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
 
             lineas_nombre = []
             for ln in lineas_alumno:
-                if _RE_DATE.search(ln):
+                m_ln_fec = _RE_DATE.search(ln)
+                if m_ln_fec:
+                    antes = ln[:m_ln_fec.start()].strip()
+                    if antes:
+                        lineas_nombre.append(antes)
                     break
                 lineas_nombre.append(ln)
 
