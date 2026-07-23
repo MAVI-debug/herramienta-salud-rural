@@ -8,7 +8,7 @@
         <p>Técnico en Salud Rural (TSR)</p>
     </div>
 
-    <!-- ─── Tarjetas de Métricas ─────────────────── -->
+    <!-- ─── Tarjetas de Métricas + Escuelas ─────── -->
     <div class="metricas">
         <div class="metrica metrica-estudiantes" onclick="toggleMetrica(this)">
             <div class="metrica-inner">
@@ -37,38 +37,15 @@
                 </div>
             </div>
         </div>
-    </div>
-
-    <!-- ─── Botones de Acción ────────────────────── -->
-    <div class="acciones-grid">
-        <a href="/desparasitacion" class="btn-accion btn-desparasitacion">
-            <span class="accion-icono">💊</span>
-            <span class="accion-texto">Desparasitación</span>
-        </a>
-
-        <a href="/fluorizacion" class="btn-accion btn-fluorizacion">
-            <span class="accion-icono">🦷</span>
-            <span class="accion-texto">Fluorización</span>
-        </a>
-        <div class="btn-accion-wrapper">
-            <a href="{{ url_for('sisca_form') }}" class="btn-accion btn-sisca">
-                <span class="accion-icono">📋</span>
-                <span class="accion-texto">SISCA</span>
-            </a>
-        </div>
-
-        <div class="btn-accion-wrapper">
-            <button type="button" class="btn-accion btn-escuelas" id="btnToggleEscuelas">
-                <span class="accion-icono">🏫</span>
-                <span class="accion-texto">Escuelas</span>
-            </button>
-        </div>
-        <div class="btn-accion-wrapper">
-            <a href="{{ url_for('consolidado') }}" class="btn-accion btn-consolidado">
-                <span class="accion-icono">📊</span>
-                <span class="accion-texto">Consolidado</span>
-            </a>
-        </div>
+        <button type="button" class="metrica metrica-escuelas-btn" id="btnToggleEscuelas">
+            <div class="metrica-inner">
+                <span class="metrica-icono">🏫</span>
+                <div class="metrica-contenido">
+                    <span class="metrica-num">{{ escuelas|length }}</span>
+                    <span class="metrica-label">Escuelas registradas</span>
+                </div>
+            </div>
+        </button>
     </div>
 
     <!-- ─── Listado de Escuelas (inline) ─────────── -->
@@ -104,6 +81,26 @@
         <p class="vacio">No hay escuelas registradas aún.</p>
         {% endif %}
     </div>
+
+    <!-- ─── Botones de Acción ────────────────────── -->
+    <div class="acciones-grid">
+        <a href="{{ url_for('consolidado') }}" class="btn-accion btn-consolidado">
+            <span class="accion-icono">📊</span>
+            <span class="accion-texto">Consolidado</span>
+        </a>
+        <a href="/desparasitacion" class="btn-accion btn-desparasitacion">
+            <span class="accion-icono">💊</span>
+            <span class="accion-texto">Desparasitación</span>
+        </a>
+        <a href="/fluorizacion" class="btn-accion btn-fluorizacion">
+            <span class="accion-icono">🦷</span>
+            <span class="accion-texto">Fluorización</span>
+        </a>
+        <a href="{{ url_for('sisca_form') }}" class="btn-accion btn-sisca">
+            <span class="accion-icono">📋</span>
+            <span class="accion-texto">SISCA</span>
+        </a>
+    </div>
 </div>
 {% endblock %}
 
@@ -119,7 +116,8 @@ function toggleMetrica(el) {
     var btnCerrar = document.getElementById('btnCerrarEscuelas');
 
     if (btn && panel) {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
             panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
         });
     }

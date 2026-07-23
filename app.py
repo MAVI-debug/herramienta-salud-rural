@@ -1259,7 +1259,7 @@ def guardar_jornada():
     else:
         fecha_corte = _obtener_fecha_corte()
 
-    matriz, _, totales = _consolidado_data(fecha_corte)
+    matriz, _, totales = _consolidado_data(fecha_jornada)
 
     sub_6_14 = totales["sub_6_14"]
     total_gral = totales["gral"]

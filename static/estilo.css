@@ -234,6 +234,25 @@ body {
 .metrica-estudiantes .metrica-expand-inner .stat-mint {
     color: #1a5a4a;
 }
+.metrica-escuelas-btn {
+    background: var(--color-bg-main);
+    border: none;
+    border-bottom: 4px solid var(--color-teal-mid);
+    border-radius: 16px;
+    padding: 28px 24px 22px;
+    flex-direction: column;
+    gap: 0;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    cursor: pointer;
+    text-align: left;
+    position: relative;
+    overflow: hidden;
+}
+.metrica-escuelas-btn:hover {
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 12px 36px rgba(9, 209, 199, 0.20);
+}
 .metrica-icono {
     font-size: 2.4rem;
     line-height: 1;
@@ -337,6 +356,7 @@ body {
     background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 60%);
     opacity: 0;
     transition: opacity 0.4s ease;
+    pointer-events: none;
 }
 .btn-accion:hover::before { opacity: 1; }
 .btn-accion:hover {
