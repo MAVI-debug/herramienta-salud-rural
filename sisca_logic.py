@@ -227,11 +227,14 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             j = i + 1
             while j < len(lineas) and j <= i + 3:
                 prox = lineas[j].strip()
-                if prox and not _es_linea_header(prox):
-                    bloque += " " + prox
-                    j += 1
-                else:
+                if not prox:
                     break
+                if _es_linea_header(prox):
+                    break
+                if _RE_CUI.search(prox) or _RE_CODIGO_PERSONAL.search(prox):
+                    break
+                bloque += " " + prox
+                j += 1
 
             alumno = _extraer_alumno_de_texto(bloque)
             if alumno:
