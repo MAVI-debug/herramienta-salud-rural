@@ -85,6 +85,17 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     _RE_CUI = re.compile(r'\b(\d{13})\b')
     _RE_CODIGO_PERSONAL = re.compile(r'\b([A-Z]{1,4}[\-]?[0-9]{3,8})\b')
     _RE_DATE = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
+    _RE_FILA = re.compile(
+        r'^(\d+)\s+'
+        r'.*?'
+        r'(\d{1,2}/\d{1,2}/\d{4})\s+'
+        r'([A-ZÁÉÍÓÚÑ\s]+?)\s{2,}'
+        r'([A-ZÁÉÍÓÚÑ\s]+?)\s{2,}'
+        r'.*?'
+        r'(\d{13})\s+'
+        r'([FM])\b',
+        re.MULTILINE
+    )
     _RE_GEN = re.compile(r'\b([FM])\b')
     _RE_NUM = re.compile(r'^\s*(\d{1,3})\s+')
     _RE_TEXTO = re.compile(r'[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\.\-]{2,}', re.IGNORECASE)
@@ -199,6 +210,24 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
             val = m_s.group(1).strip().upper()
             if val:
                 seccion_actual = val
+
+        for m in _RE_FILA.finditer(texto):
+            ap = m.group(3).strip()
+            nom = m.group(4).strip()
+            fec = m.group(2).strip()
+            cui = m.group(5).strip()
+            gen = m.group(6).strip()
+            if cui not in _cuis_vistos and ap and nom:
+                _cuis_vistos.add(cui)
+                alumnos.append({
+                    "grado": grado_actual,
+                    "seccion": seccion_actual,
+                    "apellidos": ap,
+                    "nombres": nom,
+                    "fecha_nac": fec,
+                    "cui": cui,
+                    "genero": gen,
+                })
 
         lineas = texto.splitlines()
         i = 0
