@@ -5,21 +5,10 @@ set -o errexit
 
 echo ">>> [render-build] Iniciando build..."
 
-# Render puede ejecutar el build como root o como usuario con sudo.
-if [ "$(id -u)" -eq 0 ]; then
-    SUDO=""
-else
-    SUDO="sudo"
-fi
-
-echo ">>> [render-build] Instalando LibreOffice headless..."
-$SUDO apt-get update -y
-$SUDO apt-get install -y --no-install-recommends \
-    libreoffice-core \
-    libreoffice-calc \
-    libreoffice-common \
-    fonts-liberation \
-    fonts-dejavu
+# El build de Render corre como root: no se usa sudo.
+echo ">>> [render-build] Instalando LibreOffice..."
+apt-get update -y
+apt-get install -y libreoffice fonts-liberation
 
 echo ">>> [render-build] Verificando LibreOffice:"
 soffice --version || libreoffice --version || { echo "ERROR: LibreOffice no quedo instalado."; exit 1; }
