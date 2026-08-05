@@ -454,20 +454,26 @@ def dashboard():
     mes_c = fecha_corte.month
     dia_c = fecha_corte.day
 
-    # Alumnos en rango 6-14 años (solo con escuela activa)
-    en_rango = fetchone("""
-        SELECT COUNT(*) AS c FROM estudiantes e
+    # Alumnos en rango 6-14 años (solo con escuela activa).
+    # Se cuenta en Python para tolerar fechas de nacimiento vacías o
+    # malformadas: en Postgres, CAST('' AS INTEGER) lanzaría error 500.
+    filas_fecha_nac = fetchall("""
+        SELECT e.fecha_nacimiento AS fn
+        FROM estudiantes e
         WHERE e.usuario_id = %s
-    """ + student_exists_join + """
-          AND (CAST(%s AS INTEGER) - CAST(substr(e.fecha_nacimiento,7,4) AS INTEGER)
-               - CASE
-                   WHEN CAST(substr(e.fecha_nacimiento,4,2) AS INTEGER) > %s
-                        OR (CAST(substr(e.fecha_nacimiento,4,2) AS INTEGER) = %s
-                            AND CAST(substr(e.fecha_nacimiento,1,2) AS INTEGER) > %s)
-                   THEN 1 ELSE 0
-                 END
-              ) BETWEEN 6 AND 14
-    """, (uid, anio_c, mes_c, mes_c, dia_c))["c"]
+    """ + student_exists_join, (uid,))
+    en_rango = 0
+    for fila_fn in filas_fecha_nac:
+        partes = str(fila_fn["fn"] or "").strip().split("/")
+        if len(partes) != 3:
+            continue
+        try:
+            dia, mes, anio = int(partes[0]), int(partes[1]), int(partes[2])
+        except (ValueError, TypeError):
+            continue
+        edad = anio_c - anio - (1 if (mes_c, dia_c) < (mes, dia) else 0)
+        if 6 <= edad <= 14:
+            en_rango += 1
     pct_rango = round(en_rango / total_estudiantes * 100, 1) if total_estudiantes else 0
 
     # Desparasitados por jornada (vinculados a escuelas activas)
