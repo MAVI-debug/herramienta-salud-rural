@@ -1578,8 +1578,10 @@ def exportar_consolidado_total():
 # Rutas — Eliminar escuela
 # ---------------------------------------------------------------------------
 
+@app.route("/eliminar_escuela", methods=["POST", "GET"])
+@app.route("/eliminar_escuela/", methods=["POST", "GET"])
 @app.route("/eliminar_escuela/<path:codigo_centro>", methods=["POST", "GET"])
-def eliminar_escuela(codigo_centro):
+def eliminar_escuela(codigo_centro=""):
     if "usuario_id" not in session:
         return login_requerido()
     uid = session["usuario_id"]
