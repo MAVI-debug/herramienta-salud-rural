@@ -1475,7 +1475,7 @@ def eliminar_jornada(jornada_id):
     return redirect(url_for("consolidado"))
 
 
-@app.route("/exportar_escuela/<codigo_centro>")
+@app.route("/exportar_escuela/<path:codigo_centro>")
 def exportar_escuela(codigo_centro):
     if "usuario_id" not in session:
         return login_requerido()
@@ -1572,11 +1572,15 @@ def exportar_consolidado_total():
 # Rutas — Eliminar escuela
 # ---------------------------------------------------------------------------
 
-@app.route("/eliminar_escuela/<codigo_centro>", methods=["POST"])
+@app.route("/eliminar_escuela/<path:codigo_centro>", methods=["POST", "GET"])
 def eliminar_escuela(codigo_centro):
     if "usuario_id" not in session:
         return login_requerido()
     uid = session["usuario_id"]
+    codigo_centro = (codigo_centro or request.values.get("codigo_centro") or "").strip()
+    if not codigo_centro:
+        flash("Código de escuela no válido.", "warning")
+        return redirect(url_for("consolidado"))
     execute("DELETE FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
             (codigo_centro, uid))
     execute("DELETE FROM estudiantes WHERE usuario_id = %s AND cui IN ("
