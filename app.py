@@ -122,7 +122,7 @@ def login_requerido():
 def generar_demo():
     if "usuario_id" not in session:
         return login_requerido()
-    if not session.get("es_admin") or session.get("usuario") != "mavi":
+    if not (session.get("es_admin") or session.get("is_admin")) or session.get("usuario") != "mavi":
         return "Acceso denegado: solo el administrador 'mavi' puede usar esta ruta.", 403
 
     contrasena_plano = "demo123"
@@ -165,7 +165,6 @@ def login():
             "FROM usuarios WHERE usuario = %s",
             (usuario,)
         )
-        print("DEBUG LOGIN fila:", fila)
 
         if fila and verificar_contrasena(fila["contrasena_hash"], contrasena):
             session.permanent = True
@@ -175,7 +174,11 @@ def login():
             session["cargo"] = fila["cargo"]
             session["area_salud"] = fila["area_salud"]
             session["distrito_salud"] = fila["distrito_salud"]
-            session["es_admin"] = bool(fila["es_admin"])
+            # El rol de administrador corresponde a "mavi": se asigna siempre
+            # al iniciar sesión, aunque es_admin esté en 0 en la base de datos.
+            es_admin = True if fila["usuario"] == "mavi" else bool(fila["es_admin"])
+            session["es_admin"] = es_admin
+            session["is_admin"] = es_admin
             fc_db = fila["fecha_corte"]
             if fc_db:
                 session["fecha_corte"] = fc_db
@@ -205,7 +208,7 @@ def registrar_tsr():
     if "usuario_id" not in session:
         return login_requerido()
 
-    if not session.get("es_admin") or session.get("usuario") != "mavi":
+    if not (session.get("es_admin") or session.get("is_admin")) or session.get("usuario") != "mavi":
         flash("No tienes permisos para acceder a esta sección.", "danger")
         return redirect(url_for("dashboard"))
 
@@ -250,7 +253,7 @@ def registrar_tsr():
 def admin_usuarios():
     if "usuario_id" not in session:
         return login_requerido()
-    if not session.get("es_admin") or session.get("usuario") != "mavi":
+    if not (session.get("es_admin") or session.get("is_admin")) or session.get("usuario") != "mavi":
         flash("No tienes permisos para acceder a esta sección.", "danger")
         return redirect(url_for("dashboard"))
 
