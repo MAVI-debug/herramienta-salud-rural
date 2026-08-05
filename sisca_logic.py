@@ -514,8 +514,8 @@ def _escribir_fila_divisoria(ws, fila: int, texto: str):
     for rng in list(ws.merged_cells.ranges):
         if rng.min_row == fila and rng.max_row == fila and rng.min_col <= 12:
             ws.unmerge_cells(str(rng))
-    for col in (12, 13, 14, 15, 16, 17):
-        ws.cell(fila, col, None)
+    for col in (1, 12, 13, 14, 15, 16, 17):
+        ws.cell(fila, col).value = None
     ws.merge_cells(start_row=fila, start_column=2, end_row=fila, end_column=12)
     celda = ws.cell(fila, 2, texto)
     celda.font = Font(bold=True, size=14, name="Arial", color="FF0000")
@@ -526,14 +526,15 @@ def _escribir_fila_divisoria(ws, fila: int, texto: str):
 def _rellenar_alumnos_pagina(ws, fila_inicio: int, items_pagina: list):
     for i in range(SISCA_FILAS_POR_HOJA):
         fila = fila_inicio + i
-        for col in (2, 12, 13, 14, 15, 16, 17):
-            ws.cell(fila, col, None)
+        for col in (1, 2, 12, 13, 14, 15, 16, 17):
+            ws.cell(fila, col).value = None
     for i, item in enumerate(items_pagina):
         fila = fila_inicio + i
         if item.get("tipo") == "divisor":
             _escribir_fila_divisoria(ws, fila, item["texto"])
             continue
         alumno = item["alumno"]
+        ws.cell(fila, 1, item.get("numero", 1))
         ws.cell(fila, 2, alumno["nombre"])
         celda_cui = ws.cell(fila, 12, "" if str(alumno["cui"]).startswith("TMP-") else alumno["cui"])
         celda_cui.number_format = "@"
@@ -578,6 +579,7 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
 
     paginas = [[]]
     for grupo in grupos:
+        numero = 0
         for idx_alumno, alumno in enumerate(grupo["alumnos"]):
             if idx_alumno == 0:
                 if len(paginas[-1]) + 2 > SISCA_FILAS_POR_HOJA:
@@ -585,7 +587,8 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
                 paginas[-1].append({"tipo": "divisor", "texto": grupo["texto"]})
             if len(paginas[-1]) >= SISCA_FILAS_POR_HOJA:
                 paginas.append([])
-            paginas[-1].append({"tipo": "alumno", "alumno": alumno})
+            numero += 1
+            paginas[-1].append({"tipo": "alumno", "alumno": alumno, "numero": numero})
 
     total_bloques = max(1, math.ceil(len(paginas) / 2))
     bloques_hojas = [_duplicar_bloque_sisca(wb, i) for i in range(1, total_bloques + 1)]
@@ -787,13 +790,10 @@ def generar_excel_escuela(ruta_salida: str,
     for a in alumnos:
         key = (a.get("grado", "") or "", a.get("seccion", "") or "")
         grupos.setdefault(key, []).append(a)
-    for k in grupos:
-        grupos[k].sort(key=lambda x: x.get("nombre", ""))
 
     fila = 5
 
-    for (grado, seccion), grupo in sorted(grupos.items(),
-                                          key=lambda item: _clave_grado_seccion(item[0][0], item[0][1])):
+    for (grado, seccion), grupo in grupos.items():
         fila += 1
         texto_grupo = f"{grado or 'SIN GRADO'} \u2014 Secci\u00f3n {seccion or 'SIN SECCI\u00d3N'}"
         ws.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=12)
@@ -1000,13 +1000,10 @@ def generar_excel_consolidado(ruta_salida: str,
         for a in alumnos:
             key = (a.get("grado", "") or "", a.get("seccion", "") or "")
             grupos_det.setdefault(key, []).append(a)
-        for k in grupos_det:
-            grupos_det[k].sort(key=lambda x: x.get("nombre", ""))
 
         fila = 4
 
-        for (grado, seccion), grupo in sorted(grupos_det.items(),
-                                              key=lambda item: _clave_grado_seccion(item[0][0], item[0][1])):
+        for (grado, seccion), grupo in grupos_det.items():
             fila += 1
             texto_grupo = f"{grado or 'SIN GRADO'} \u2014 Secci\u00f3n {seccion or 'SIN SECCI\u00d3N'}"
             ws_det.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=12)

@@ -623,6 +623,7 @@ def generar_sigsa22():
         JOIN estudiantes e ON r.cui_estudiante = e.cui AND r.usuario_id = e.usuario_id
         WHERE r.codigo_centro = %s AND r.usuario_id = %s
         GROUP BY e.cui, e.usuario_id
+        ORDER BY MIN(r.id)
     """, (codigo_centro, uid))
 
     if not registros:
@@ -1094,7 +1095,7 @@ def _consolidado_data(fecha_corte, uid=None):
         JOIN estudiantes e ON r.cui_estudiante = e.cui AND r.usuario_id = e.usuario_id
         WHERE r.usuario_id = %s
         GROUP BY e.cui, e.usuario_id, r.codigo_centro
-        ORDER BY r.codigo_centro
+        ORDER BY r.codigo_centro, MIN(r.id)
     """, (uid,))
 
     # Agrupar en Python por código de centro
@@ -1199,16 +1200,10 @@ def consolidado():
         for a in raw:
             key = (a.get("grado", ""), a.get("seccion", ""))
             grupos.setdefault(key, []).append(a)
-        for k in grupos:
-            grupos[k].sort(key=lambda x: x.get("nombre", ""))
         m["alumnos"] = raw
         m["alumnos_agrupados"] = [
             {"grado": k[0], "seccion": k[1], "alumnos": v}
-            for k, v in sorted(grupos.items(),
-                               key=lambda item: (
-                                   sisca_logic._orden_grado(item[0][0]),
-                                   item[0][1]
-                               ))
+            for k, v in grupos.items()
         ]
 
     uid = session["usuario_id"]
@@ -1332,6 +1327,7 @@ def exportar_escuela(codigo_centro):
         JOIN estudiantes e ON r.cui_estudiante = e.cui AND r.usuario_id = e.usuario_id
         WHERE r.codigo_centro = %s AND r.usuario_id = %s
         GROUP BY e.cui, e.usuario_id
+        ORDER BY MIN(r.id)
     """, (codigo_centro, uid))
 
     alumnos = []
