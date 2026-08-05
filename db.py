@@ -84,8 +84,93 @@ def commit():
 # Migraciones silenciosas
 # ---------------------------------------------------------------------------
 
+def _crear_esquema_nuevo_sqlite(conn):
+    """Crea el esquema completo en una base de datos SQLite vacía."""
+    from datetime import date as _date
+    _hoy = _date.today().strftime("%d/%m/%Y")
+    conn.executescript("""
+        DROP TABLE IF EXISTS registros_salud_nueva;
+        DROP TABLE IF EXISTS registros_salud_new;
+        DROP TABLE IF EXISTS estudiantes_nueva;
+        DROP TABLE IF EXISTS estudiantes_new;
+        DROP TABLE IF EXISTS escuelas_nueva;
+        DROP TABLE IF EXISTS escuelas_new;
+
+        CREATE TABLE usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario TEXT UNIQUE NOT NULL,
+            contrasena_hash TEXT NOT NULL,
+            nombre_responsable TEXT NOT NULL,
+            cargo TEXT NOT NULL,
+            area_salud TEXT NOT NULL,
+            distrito_salud TEXT NOT NULL,
+            es_admin INTEGER NOT NULL DEFAULT 0,
+            fecha_corte TEXT NOT NULL DEFAULT '{_hoy}'
+        );
+        CREATE TABLE escuelas (
+            codigo_centro TEXT NOT NULL,
+            usuario_id INTEGER NOT NULL,
+            nombre_centro TEXT NOT NULL,
+            tipo_centro TEXT NOT NULL DEFAULT 'PUBLICO',
+            servicio_salud TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (codigo_centro, usuario_id),
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        );
+        CREATE TABLE estudiantes (
+            cui TEXT NOT NULL,
+            usuario_id INTEGER NOT NULL,
+            nombre_completo TEXT NOT NULL,
+            sexo TEXT NOT NULL,
+            fecha_nacimiento TEXT NOT NULL,
+            grado TEXT DEFAULT '',
+            seccion TEXT DEFAULT '',
+            PRIMARY KEY (cui, usuario_id),
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        );
+        CREATE TABLE registros_salud (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cui_estudiante TEXT,
+            codigo_centro TEXT,
+            tipo_intervencion TEXT NOT NULL DEFAULT 'Desparasitacion',
+            campana TEXT NOT NULL DEFAULT 'Primera',
+            fecha_aplicacion TEXT NOT NULL,
+            fecha_corte TEXT NOT NULL DEFAULT '31/03/2026',
+            edad_calculo INTEGER DEFAULT NULL,
+            usuario_id INTEGER NOT NULL,
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        );
+        CREATE TABLE jornadas_realizadas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER NOT NULL,
+            tipo_jornada TEXT NOT NULL,
+            fecha_jornada TEXT NOT NULL,
+            anio INTEGER NOT NULL,
+            fecha_corte TEXT NOT NULL,
+            total_entran_rango INTEGER NOT NULL DEFAULT 0,
+            total_no_entran INTEGER NOT NULL DEFAULT 0,
+            total_f INTEGER NOT NULL DEFAULT 0,
+            total_m INTEGER NOT NULL DEFAULT 0,
+            total_general INTEGER NOT NULL DEFAULT 0,
+            observaciones TEXT DEFAULT '',
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_estudiantes_sexo ON estudiantes(sexo);
+        CREATE INDEX IF NOT EXISTS idx_estudiantes_fecha_nacimiento ON estudiantes(fecha_nacimiento);
+        CREATE INDEX IF NOT EXISTS idx_registros_cui ON registros_salud(cui_estudiante);
+        CREATE INDEX IF NOT EXISTS idx_registros_centro ON registros_salud(codigo_centro);
+        CREATE INDEX IF NOT EXISTS idx_registros_intervencion ON registros_salud(tipo_intervencion, campana);
+        CREATE INDEX IF NOT EXISTS idx_registros_usuario ON registros_salud(usuario_id);
+    """.format(_hoy=_hoy))
+
+
 def _run_migrations_sqlite(conn):
     import sqlite3
+
+    # ── Base de datos nueva: crear el esquema completo desde cero ──────────
+    cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='escuelas'")
+    if not cur.fetchone():
+        _crear_esquema_nuevo_sqlite(conn)
+        return
 
     # ── Migración silenciosa a PK compuesta con usuario_id ──────────────────
     cur = conn.execute("PRAGMA table_info(escuelas)")
