@@ -58,7 +58,7 @@ def _job_clean(job_id):
 
 
 # Fichas SISCA individuales ya generadas, a la espera de que el usuario
-# elija el formato de descarga (Excel o PDF).
+# descargue el archivo en Excel (.xlsx).
 _fichas_sisca = {}
 _fichas_lock = threading.Lock()
 FICHA_TTL_SEG = 30 * 60  # 30 minutos para descargar antes de expirar
@@ -968,7 +968,7 @@ def procesar_sisca():
 
 @app.route("/sisca/descargar_individual/<file_id>")
 def sisca_descargar_individual(file_id):
-    """Sirve la ficha SISCA individual en el formato elegido (xlsx o pdf)."""
+    """Sirve la ficha SISCA individual en Excel (.xlsx)."""
     if "usuario_id" not in session:
         return login_requerido()
 
@@ -979,16 +979,9 @@ def sisca_descargar_individual(file_id):
     if not ruta or not os.path.exists(ruta):
         return jsonify({"error": "El archivo ya no existe en el servidor."}), 404
 
-    formato = request.args.get("formato", "xlsx").lower()
     tipo = ficha.get("tipo", "desparasitacion")
     codigo = ficha.get("codigo", "")
     base_nombre = f"SISCA_{codigo}_{tipo}"
-
-    if formato == "pdf":
-        return jsonify({
-            "error": ("La descarga en PDF no está disponible en este servidor. "
-                      "Descarga la ficha en Excel (.xlsx).")
-        }), 501
 
     archivo = ruta
     download_name = f"{base_nombre}.xlsx"
@@ -1006,9 +999,6 @@ def sisca_descargar_individual(file_id):
         try:
             if os.path.exists(ruta):
                 os.remove(ruta)
-            pdf2 = os.path.splitext(ruta)[0] + ".pdf"
-            if os.path.exists(pdf2):
-                os.remove(pdf2)
         except Exception:
             pass
         _ficha_clean(file_id)
@@ -1191,18 +1181,11 @@ def sisca_descargar(job_id):
     if not zip_path or not os.path.exists(zip_path):
         return jsonify({"error": "Archivo no encontrado"}), 404
     tipo = job.get("tipo_intervencion", "desparasitacion")
-    formato = request.args.get("formato", "xlsx").lower()
 
     archivo_a_enviar = zip_path
     download_name = f"SISCA_masivo_{tipo}.zip"
     mimetype = "application/zip"
     temp_dir = None
-
-    if formato == "pdf":
-        return jsonify({
-            "error": ("La descarga en PDF no está disponible en este servidor. "
-                      "Descarga el ZIP en Excel (.xlsx).")
-        }), 501
 
     response = send_file(
         archivo_a_enviar,

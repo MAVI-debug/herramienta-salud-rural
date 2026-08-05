@@ -10,8 +10,7 @@
 
         <label for="responsable">Responsable de la Información</label>
         <input type="text" name="responsable" id="responsable"
-               value="{{ session.nombre_responsable }}" required readonly
-               title="Nombre fijo del usuario autenticado">		<p class="form-hint" style="margin-top:-8px;margin-bottom:10px;font-size:12px;color:#8aa0b5;">🔒 Fijado automáticamente a tu usuario.</p>
+               value="{{ session.nombre_responsable }}" required readonly>
 
         <label for="cargo">Cargo</label>
         <input type="text" name="cargo" id="cargo"
@@ -48,7 +47,6 @@
             <option value="Otros">Otros</option>
             <option value="No Indica">No Indica</option>
         </select>
-        <p class="form-hint" style="margin-top:-8px;margin-bottom:10px;font-size:12px;color:#8aa0b5;">Se marcará una "X" en la columna del pueblo seleccionado en todas las fichas generadas.</p>
 
         <h3 class="form-seccion">Filtro de edad</h3>
         <label for="fecha_corte">Fecha de corte</label>
@@ -80,7 +78,6 @@
         </div>
 
         <button type="submit" class="btn-masivo" id="btnMasivo">Generar SISCA Masivo</button>
-        <p class="form-hint" style="font-size:12px;color:#8aa0b5;">Al terminar podrás elegir el formato de descarga: Excel (.xlsx) o PDF.</p>
 
         <div class="retorno-form">
             <a href="/dashboard" class="btn-retorno">
@@ -110,11 +107,10 @@
                 <div class="progress-bar-fill progress-complete" id="progressFillDone"></div>
             </div>
             <p class="progress-porcent">100%</p>
-            <p class="loading-sub" style="margin-top:0;">Elige el formato de descarga:</p>
+            <p class="loading-sub" style="margin-top:0;">Descarga tus fichas SISCA:</p>
             <div class="formato-descarga">
                 <button id="btnDescargarExcel" class="btn-descarga-grande">⬇️ Descargar en Excel (.xlsx)</button>
             </div>
-            <p class="loading-sub">El PDF no está disponible en este servidor: descarga en Excel y usa "Imprimir" para generar el PDF.</p>
             <p class="loading-sub" id="erroresSub" style="display:none;color:#ff6b6b;"></p>
             <div class="retorno-exito">
                 <a href="/dashboard" class="btn-retorno">

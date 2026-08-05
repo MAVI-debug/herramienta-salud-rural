@@ -905,9 +905,6 @@ body {
 .formato-descarga .btn-descarga-grande {
     margin-top: 0;
 }
-.btn-descarga-pdf {
-    background: linear-gradient(135deg, #ff8a5c, #e0483e);
-}
 
 /* ─── Consolidado ───────────────────────────── */
 .consolidado-page {

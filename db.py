@@ -251,13 +251,6 @@ def _run_migrations_sqlite(conn):
     except sqlite3.OperationalError:
         pass
 
-    # Marcar tsr_demo como administrador
-    try:
-        conn.execute("UPDATE usuarios SET es_admin = 1 WHERE usuario = 'tsr_demo'")
-        conn.commit()
-    except Exception:
-        pass
-
     # ── Migracion: columna fecha_corte en usuarios ─────────────────────
     try:
         from datetime import date as _date
@@ -377,7 +370,6 @@ def _run_migrations_pg(conn):
     # ── Migracion: columna es_admin ────────────────────────────────────
     try:
         cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS es_admin INTEGER NOT NULL DEFAULT 0")
-        cur.execute("UPDATE usuarios SET es_admin = 1 WHERE usuario = 'tsr_demo'")
     except Exception:
         pass
 

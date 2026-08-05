@@ -26,8 +26,7 @@
 
         <label for="responsable">Responsable de la Información</label>
         <input type="text" name="responsable" id="responsable"
-               value="{{ session.nombre_responsable }}" required readonly
-               title="Nombre fijo del usuario autenticado">		<p class="form-hint" style="margin-top:-8px;margin-bottom:10px;font-size:12px;color:#8aa0b5;">🔒 Fijado automáticamente a tu usuario.</p>
+               value="{{ session.nombre_responsable }}" required readonly>
 
         <label for="cargo">Cargo</label>
         <input type="text" name="cargo" id="cargo"
@@ -51,7 +50,6 @@
             <option value="PÚBLICO" {{ 'selected' if escuela and escuela.tipo_centro == 'PÚBLICO' else '' }}>PÚBLICO</option>
             <option value="PRIVADO" {{ 'selected' if escuela and escuela.tipo_centro == 'PRIVADO' else '' }}>PRIVADO</option>
         </select>
-        <p class="form-hint" style="margin-top:-8px;margin-bottom:10px;font-size:12px;color:#8aa0b5;">Elige "— En blanco —" para no marcar ninguna de las clasificaciones en el encabezado.</p>
 
         <label for="jornada">Jornada <span style="color:var(--color-cyan-bright);">*</span></label>
         <select name="jornada" id="jornada" required>
@@ -73,7 +71,6 @@
             <option value="Otros">Otros</option>
             <option value="No Indica">No Indica</option>
         </select>
-        <p class="form-hint" style="margin-top:-8px;margin-bottom:10px;font-size:12px;color:#8aa0b5;">Se marcará una "X" en la columna del pueblo seleccionado. Puedes ajustar estudiante por estudiante abajo.</p>
 
         <h3 class="form-seccion">Filtro de edad</h3>
 
@@ -110,7 +107,6 @@
         </div>
 
         <button type="submit" id="btnGenerar">Generar Ficha SISCA</button>
-        <p class="form-hint" style="font-size:12px;color:#8aa0b5;">Al terminar podrás elegir el formato de descarga: Excel (.xlsx) o PDF.</p>
 
         <div class="retorno-form">
             <a href="/dashboard" class="btn-retorno">
@@ -140,11 +136,10 @@
                 <div class="progress-bar-fill progress-complete" id="progressFillDone"></div>
             </div>
             <p class="progress-porcent">100%</p>
-            <p class="loading-sub" style="margin-top:0;">Elige el formato de descarga:</p>
+            <p class="loading-sub" style="margin-top:0;">Descarga tu ficha SISCA:</p>
             <div class="formato-descarga">
                 <button id="btnDescargarExcel" class="btn-descarga-grande">⬇️ Descargar en Excel (.xlsx)</button>
             </div>
-            <p class="loading-sub">El PDF no está disponible en este servidor: descarga en Excel y usa "Imprimir" para generar el PDF.</p>
             <div class="retorno-exito">
                 <a href="/dashboard" class="btn-retorno">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
