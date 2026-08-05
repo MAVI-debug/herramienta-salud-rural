@@ -10,7 +10,8 @@
 
         <label for="responsable">Responsable de la Información</label>
         <input type="text" name="responsable" id="responsable"
-               value="{{ session.nombre_responsable }}" required>
+               value="{{ session.nombre_responsable }}" required readonly
+               title="Nombre fijo del usuario autenticado">		<p class="form-hint" style="margin-top:-8px;margin-bottom:10px;font-size:12px;color:#8aa0b5;">🔒 Fijado automáticamente a tu usuario.</p>
 
         <label for="cargo">Cargo</label>
         <input type="text" name="cargo" id="cargo"
@@ -36,6 +37,18 @@
         <label for="fecha_reporte">Fecha del Reporte</label>
         <input type="text" name="fecha_reporte" id="fecha_reporte"
                value="{{ now }}" placeholder="DD/MM/AAAA">
+
+        <label for="pueblo_default">Pueblo (aplicar a todos los estudiantes) <span style="color:var(--color-cyan-bright);">*</span></label>
+        <select name="pueblo_default" id="pueblo_default">
+            <option value="">— En blanco —</option>
+            <option value="Mestizo o ladino">Mestizo o ladino</option>
+            <option value="Maya">Maya</option>
+            <option value="Garífuna">Garífuna</option>
+            <option value="Xinca">Xinca</option>
+            <option value="Otros">Otros</option>
+            <option value="No Indica">No Indica</option>
+        </select>
+        <p class="form-hint" style="margin-top:-8px;margin-bottom:10px;font-size:12px;color:#8aa0b5;">Se marcará una "X" en la columna del pueblo seleccionado en todas las fichas generadas.</p>
 
         <h3 class="form-seccion">Filtro de edad</h3>
         <label for="fecha_corte">Fecha de corte</label>
@@ -66,7 +79,8 @@
             {% endfor %}
         </div>
 
-        <button type="submit" class="btn-masivo" id="btnMasivo">⬇ Descargar SISCA Masivo (ZIP)</button>
+        <button type="submit" class="btn-masivo" id="btnMasivo">Generar SISCA Masivo</button>
+        <p class="form-hint" style="font-size:12px;color:#8aa0b5;">Al terminar podrás elegir el formato de descarga: Excel (.xlsx) o PDF.</p>
 
         <div class="retorno-form">
             <a href="/dashboard" class="btn-retorno">
@@ -96,7 +110,11 @@
                 <div class="progress-bar-fill progress-complete" id="progressFillDone"></div>
             </div>
             <p class="progress-porcent">100%</p>
-            <button id="btnDescargarZip" class="btn-descarga-grande">⬇️ Descargar ZIP</button>
+            <p class="loading-sub" style="margin-top:0;">Elige el formato de descarga:</p>
+            <div class="formato-descarga">
+                <button id="btnDescargarExcel" class="btn-descarga-grande">⬇️ Descargar en Excel (.xlsx)</button>
+                <button id="btnDescargarPDF" class="btn-descarga-grande btn-descarga-pdf">🖨️ Descargar en PDF</button>
+            </div>
             <p class="loading-sub" id="erroresSub" style="display:none;color:#ff6b6b;"></p>
             <div class="retorno-exito">
                 <a href="/dashboard" class="btn-retorno">
@@ -123,7 +141,8 @@
     var progressFill = document.getElementById('progressFill');
     var progressPorcent = document.getElementById('progressPorcent');
     var progressSub = document.getElementById('progressSub');
-    var btnDescargarZip = document.getElementById('btnDescargarZip');
+    var btnDescargarExcel = document.getElementById('btnDescargarExcel');
+    var btnDescargarPDF = document.getElementById('btnDescargarPDF');
     var btnMasivo = document.getElementById('btnMasivo');
     var erroresSub = document.getElementById('erroresSub');
 
@@ -180,7 +199,16 @@
             body: fd
         })
         .then(function(resp) {
-            if (!resp.ok) throw new Error('Error del servidor: ' + resp.status);
+            if (!resp.ok) {
+                return resp.text().then(function(text) {
+                    var msg = 'Error del servidor: ' + resp.status;
+                    try {
+                        var d = JSON.parse(text);
+                        if (d && d.error) msg = d.error;
+                    } catch (e) {}
+                    throw new Error(msg);
+                });
+            }
             return resp.json();
         })
         .then(function(data) {
@@ -280,16 +308,22 @@
                 }, 20);
 
                 var downloadUrl = '{{ url_for("sisca_descargar", job_id="") }}' + jobId;
-                btnDescargarZip.onclick = function() {
+                btnDescargarExcel.onclick = function() {
                     var a = document.createElement('a');
-                    a.href = downloadUrl;
+                    a.href = downloadUrl + '?formato=xlsx';
                     a.download = '';
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
                 };
-
-                setTimeout(function() { btnDescargarZip.click(); }, 400);
+                btnDescargarPDF.onclick = function() {
+                    var a = document.createElement('a');
+                    a.href = downloadUrl + '?formato=pdf';
+                    a.download = '';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                };
             }, 300);
         }, 600);
     }

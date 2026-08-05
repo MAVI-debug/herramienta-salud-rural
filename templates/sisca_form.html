@@ -26,7 +26,8 @@
 
         <label for="responsable">Responsable de la Información</label>
         <input type="text" name="responsable" id="responsable"
-               value="{{ session.nombre_responsable }}" required>
+               value="{{ session.nombre_responsable }}" required readonly
+               title="Nombre fijo del usuario autenticado">		<p class="form-hint" style="margin-top:-8px;margin-bottom:10px;font-size:12px;color:#8aa0b5;">🔒 Fijado automáticamente a tu usuario.</p>
 
         <label for="cargo">Cargo</label>
         <input type="text" name="cargo" id="cargo"
@@ -46,9 +47,11 @@
 
         <label for="tipo_centro">Tipo de Centro Educativo</label>
         <select name="tipo_centro" id="tipo_centro">
+            <option value="">— En blanco —</option>
             <option value="PÚBLICO" {{ 'selected' if escuela and escuela.tipo_centro == 'PÚBLICO' else '' }}>PÚBLICO</option>
             <option value="PRIVADO" {{ 'selected' if escuela and escuela.tipo_centro == 'PRIVADO' else '' }}>PRIVADO</option>
         </select>
+        <p class="form-hint" style="margin-top:-8px;margin-bottom:10px;font-size:12px;color:#8aa0b5;">Elige "— En blanco —" para no marcar ninguna de las clasificaciones en el encabezado.</p>
 
         <label for="jornada">Jornada <span style="color:var(--color-cyan-bright);">*</span></label>
         <select name="jornada" id="jornada" required>
@@ -60,6 +63,18 @@
         <input type="text" name="fecha_reporte" id="fecha_reporte"
                value="{{ now }}" placeholder="DD/MM/AAAA">
 
+        <label for="pueblo_default">Pueblo (aplicar a todos los estudiantes) <span style="color:var(--color-cyan-bright);">*</span></label>
+        <select name="pueblo_default" id="pueblo_default">
+            <option value="">— En blanco —</option>
+            <option value="Mestizo o ladino">Mestizo o ladino</option>
+            <option value="Maya">Maya</option>
+            <option value="Garífuna">Garífuna</option>
+            <option value="Xinca">Xinca</option>
+            <option value="Otros">Otros</option>
+            <option value="No Indica">No Indica</option>
+        </select>
+        <p class="form-hint" style="margin-top:-8px;margin-bottom:10px;font-size:12px;color:#8aa0b5;">Se marcará una "X" en la columna del pueblo seleccionado. Puedes ajustar estudiante por estudiante abajo.</p>
+
         <h3 class="form-seccion">Filtro de edad</h3>
 
         <label for="fecha_corte">Fecha de corte para cálculo de edad</label>
@@ -68,7 +83,34 @@
 
         <input type="hidden" name="tipo_intervencion" value="{{ tipo }}">
 
-        <button type="submit" id="btnGenerar">Generar y Descargar Ficha SISCA</button>
+        <h3 class="form-seccion">Pueblo por estudiante (opcional)</h3>
+        <p class="subtitulo-form">Deja en "— Usar global —" para aplicar el pueblo del encabezado, o elige "En blanco" para no marcar ninguna "X".</p>
+        <div class="masiva-lista" style="max-height:320px;overflow-y:auto;">
+            {% if estudiantes %}
+            {% for a in estudiantes %}
+            <div class="masiva-item" style="justify-content:space-between;align-items:center;">
+                <span class="masiva-nombre">{{ loop.index }}. {{ a.nombre }}
+                    {%- if a.grado or a.seccion %} <small style="color:#8aa0b5;">({{ a.grado }} {{ a.seccion }})</small>{% endif %}</span>
+                <input type="hidden" name="alumno_cui" value="{{ a.cui }}">
+                <select name="alumno_pueblo" class="alumno-pueblo" style="min-width:190px;">
+                    <option value="">— Usar global —</option>
+                    <option value="__blanco__">En blanco</option>
+                    <option value="Mestizo o ladino">Mestizo o ladino</option>
+                    <option value="Maya">Maya</option>
+                    <option value="Garífuna">Garífuna</option>
+                    <option value="Xinca">Xinca</option>
+                    <option value="Otros">Otros</option>
+                    <option value="No Indica">No Indica</option>
+                </select>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p class="vacio">No hay estudiantes aptos (6-14 años) para esta escuela.</p>
+            {% endif %}
+        </div>
+
+        <button type="submit" id="btnGenerar">Generar Ficha SISCA</button>
+        <p class="form-hint" style="font-size:12px;color:#8aa0b5;">Al terminar podrás elegir el formato de descarga: Excel (.xlsx) o PDF.</p>
 
         <div class="retorno-form">
             <a href="/dashboard" class="btn-retorno">
@@ -98,8 +140,12 @@
                 <div class="progress-bar-fill progress-complete" id="progressFillDone"></div>
             </div>
             <p class="progress-porcent">100%</p>
-            <button id="btnDescargar" class="btn-descarga-grande">⬇️ Descargar Ficha Excel</button>
-            <p class="loading-sub">El archivo se descargará automáticamente al hacer clic.</p>
+            <p class="loading-sub" style="margin-top:0;">Elige el formato de descarga:</p>
+            <div class="formato-descarga">
+                <button id="btnDescargarExcel" class="btn-descarga-grande">⬇️ Descargar en Excel (.xlsx)</button>
+                <button id="btnDescargarPDF" class="btn-descarga-grande btn-descarga-pdf">🖨️ Descargar en PDF</button>
+            </div>
+            <p class="loading-sub">El PDF conserva la estructura de páginas del SISCA, listo para imprimir o editar.</p>
             <div class="retorno-exito">
                 <a href="/dashboard" class="btn-retorno">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
@@ -121,10 +167,20 @@
     var successOverlay = document.getElementById('successOverlay');
     var progressFill = document.getElementById('progressFill');
     var progressPorcent = document.getElementById('progressPorcent');
-    var btnDescargar = document.getElementById('btnDescargar');
+    var btnDescargarExcel = document.getElementById('btnDescargarExcel');
+    var btnDescargarPDF = document.getElementById('btnDescargarPDF');
     var btnGenerar = document.getElementById('btnGenerar');
 
     if (!form) return;
+
+    var puebloDefault = document.getElementById('pueblo_default');
+    var selectsPueblo = document.querySelectorAll('.alumno-pueblo');
+    if (puebloDefault && selectsPueblo.length) {
+        var aplicarPueblo = function() {
+            selectsPueblo.forEach(function(s) { s.value = puebloDefault.value; });
+        };
+        puebloDefault.addEventListener('change', aplicarPueblo);
+    }
 
     form.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -164,12 +220,17 @@
         .then(function(response) {
             if (!response.ok) {
                 return response.text().then(function(text) {
-                    throw new Error('Error del servidor: ' + (text.match(/<title>([^<]+)<\/title>/i) ? RegExp.$1 : response.status));
+                    var msg = 'Error del servidor: ' + response.status;
+                    try {
+                        var d = JSON.parse(text);
+                        if (d && d.error) msg = d.error;
+                    } catch (e) {}
+                    throw new Error(msg);
                 });
             }
-            return response.blob();
+            return response.json();
         })
-        .then(function(blob) {
+        .then(function(data) {
             clearInterval(interval);
             progressFill.style.width = '100%';
             progressPorcent.textContent = '100%';
@@ -185,13 +246,19 @@
                         successOverlay.style.opacity = '1';
                     }, 20);
 
-                    var url = URL.createObjectURL(blob);
-                    var filename = 'SISCA_{{ (escuela.codigo_centro if escuela else 'export') }}_{{ tipo }}.xlsx';
-
-                    btnDescargar.onclick = function() {
+                    var downloadUrl = '{{ url_for("sisca_descargar_individual", file_id="") }}' + data.file_id;
+                    btnDescargarExcel.onclick = function() {
                         var a = document.createElement('a');
-                        a.href = url;
-                        a.download = filename;
+                        a.href = downloadUrl + '?formato=xlsx';
+                        a.download = '';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    };
+                    btnDescargarPDF.onclick = function() {
+                        var a = document.createElement('a');
+                        a.href = downloadUrl + '?formato=pdf';
+                        a.download = '';
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);

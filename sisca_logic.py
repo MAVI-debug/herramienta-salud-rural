@@ -30,7 +30,20 @@ COLUMNAS_SUBTOTAL_SISCA = ("M", "N", "T")
 FILA_SUBTOTAL_ATRAS = 6
 FILA_TOTAL_ATRAS = 22
 
-TIPO_CENTRO_DEFECTO = "PUBLICO"
+# Columnas "Pueblo" en la ficha SISCA (R, T, V, X, Z, AB).
+# Se marca una "X" en la columna del pueblo que corresponda.
+PUEBLOS_SISCA = [
+    "Mestizo o ladino", "Maya", u"Gar\u00edfuna", "Xinca", "Otros", "No Indica",
+]
+PUEBLO_COLS = {
+    "MESTIZO O LADINO": 18,
+    "MAYA": 20,
+    "GAR\u00cdFUNA": 22,
+    "GARIFUNA": 22,
+    "XINCA": 24,
+    "OTROS": 26,
+    "NO INDICA": 28,
+}
 
 # ---------------------------------------------------------------------------
 #  Utilidades de texto
@@ -488,7 +501,7 @@ def _rellenar_encabezado_sisca(ws_adelante, nombre_escuela: str, codigo_escuela:
                                 servicio=None, responsable=None, cargo=None,
                                 fecha_reporte_str=None,
                                 jornada="Primera Jornada"):
-    tipo = (tipo_centro or TIPO_CENTRO_DEFECTO).strip().upper()
+    tipo = (tipo_centro or "").strip().upper()
     valores = {
         "C7":  area or "",
         "T7":  distrito or "",
@@ -501,9 +514,9 @@ def _rellenar_encabezado_sisca(ws_adelante, nombre_escuela: str, codigo_escuela:
         "E12": nombre_escuela.strip().upper(),
         "V12": codigo_escuela.strip().upper(),
     }
-    if tipo == "PRIVADO":
+    if "PRIVAD" in tipo:
         valores["AK12"] = "X"
-    else:
+    elif "PUBLIC" in tipo or "PÚBLIC" in tipo:
         valores["AH12"] = "X"
 
     for direccion, valor in valores.items():
@@ -514,7 +527,7 @@ def _escribir_fila_divisoria(ws, fila: int, texto: str):
     for rng in list(ws.merged_cells.ranges):
         if rng.min_row == fila and rng.max_row == fila and rng.min_col <= 12:
             ws.unmerge_cells(str(rng))
-    for col in (1, 12, 13, 14, 15, 16, 17):
+    for col in (1, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 26, 28):
         ws.cell(fila, col).value = None
     ws.merge_cells(start_row=fila, start_column=2, end_row=fila, end_column=12)
     celda = ws.cell(fila, 2, texto)
@@ -526,7 +539,7 @@ def _escribir_fila_divisoria(ws, fila: int, texto: str):
 def _rellenar_alumnos_pagina(ws, fila_inicio: int, items_pagina: list):
     for i in range(SISCA_FILAS_POR_HOJA):
         fila = fila_inicio + i
-        for col in (1, 2, 12, 13, 14, 15, 16, 17):
+        for col in (1, 2, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 26, 28):
             ws.cell(fila, col).value = None
     for i, item in enumerate(items_pagina):
         fila = fila_inicio + i
@@ -545,6 +558,9 @@ def _rellenar_alumnos_pagina(ws, fila_inicio: int, items_pagina: list):
         ws.cell(fila, 15, alumno["dia"])
         ws.cell(fila, 16, alumno["mes"])
         ws.cell(fila, 17, alumno["anio"])
+        col_pueblo = PUEBLO_COLS.get((alumno.get("pueblo") or "").strip().upper())
+        if col_pueblo:
+            ws.cell(fila, col_pueblo, "X")
 
 def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
                                  nombre_escuela: str, codigo_escuela: str,

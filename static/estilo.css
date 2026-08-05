@@ -895,6 +895,19 @@ body {
     filter: brightness(1.1);
     transform: translateY(-2px);
 }
+.formato-descarga {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 16px 0 2px;
+}
+.formato-descarga .btn-descarga-grande {
+    margin-top: 0;
+}
+.btn-descarga-pdf {
+    background: linear-gradient(135deg, #ff8a5c, #e0483e);
+}
 
 /* ─── Consolidado ───────────────────────────── */
 .consolidado-page {

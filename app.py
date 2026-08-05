@@ -9,6 +9,7 @@ import gc
 import hashlib
 import shutil
 import tempfile
+import time
 import zipfile
 import threading
 import uuid
@@ -23,6 +24,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from db import get_db, fetchone, fetchall, execute, commit, rollback, close_db
 
 import sisca_logic
+import pdf_conversion
 
 # ---------------------------------------------------------------------------
 # Configuración
@@ -56,6 +58,38 @@ def _job_clean(job_id):
         _jobs_sisca.pop(job_id, None)
 
 
+# Fichas SISCA individuales ya generadas, a la espera de que el usuario
+# elija el formato de descarga (Excel o PDF).
+_fichas_sisca = {}
+_fichas_lock = threading.Lock()
+FICHA_TTL_SEG = 30 * 60  # 30 minutos para descargar antes de expirar
+
+def _ficha_set(file_id, **kw):
+    kw["creado"] = time.time()
+    with _fichas_lock:
+        _fichas_sisca.setdefault(file_id, {}).update(kw)
+
+def _ficha_get(file_id):
+    with _fichas_lock:
+        ficha = _fichas_sisca.get(file_id)
+        if not ficha:
+            return {}
+        if time.time() - ficha.get("creado", 0) > FICHA_TTL_SEG:
+            ruta = ficha.get("ruta")
+            _fichas_sisca.pop(file_id, None)
+            if ruta and os.path.exists(ruta):
+                try:
+                    os.remove(ruta)
+                except Exception:
+                    pass
+            return {}
+        return dict(ficha)
+
+def _ficha_clean(file_id):
+    with _fichas_lock:
+        _fichas_sisca.pop(file_id, None)
+
+
 # Teardown: cierra la conexión híbrida
 app.teardown_appcontext(close_db)
 
@@ -87,6 +121,11 @@ def login_requerido():
 # ---------------------------------------------------------------------------
 @app.route("/generar-demo")
 def generar_demo():
+    if "usuario_id" not in session:
+        return login_requerido()
+    if not session.get("es_admin") or session.get("usuario") != "mavi":
+        return "Acceso denegado: solo el administrador 'mavi' puede usar esta ruta.", 403
+
     contrasena_plano = "demo123"
     hash_nuevo = hash_contrasena(contrasena_plano)
     execute("DELETE FROM usuarios WHERE usuario = %s", ("tsr_demo",))
@@ -167,7 +206,7 @@ def registrar_tsr():
     if "usuario_id" not in session:
         return login_requerido()
 
-    if not session.get("es_admin"):
+    if not session.get("es_admin") or session.get("usuario") != "mavi":
         flash("No tienes permisos para acceder a esta sección.", "danger")
         return redirect(url_for("dashboard"))
 
@@ -534,9 +573,37 @@ def sisca_form():
 
     hoy = date.today()
     fc = date.today()
+
+    # ── Lista de estudiantes aptos (para pueblo individual) ───────────────
+    registros = fetchall("""
+        SELECT e.cui, e.nombre_completo, e.sexo, e.fecha_nacimiento,
+               e.grado, e.seccion
+        FROM registros_salud r
+        JOIN estudiantes e ON r.cui_estudiante = e.cui AND r.usuario_id = e.usuario_id
+        WHERE r.codigo_centro = %s AND r.usuario_id = %s
+        GROUP BY e.cui, e.usuario_id
+        ORDER BY MIN(r.id)
+    """, (codigo_centro, uid))
+    estudiantes = []
+    for r in registros:
+        try:
+            dia_i, mes_i, anio_i = [int(p) for p in str(r["fecha_nacimiento"]).split("/")]
+        except Exception:
+            continue
+        edad = sisca_logic.calcular_edad_a_fecha_corte(dia_i, mes_i, anio_i, fc)
+        if edad is not None and 6 <= edad <= 14:
+            estudiantes.append({
+                "cui": r["cui"],
+                "nombre": r["nombre_completo"],
+                "genero": "F" if r["sexo"].startswith("F") else "M",
+                "grado": r["grado"] or "",
+                "seccion": r["seccion"] or "",
+            })
+
     return render_template("sisca_form.html",
                            tipo=tipo,
                            escuela=dict(escuela),
+                           estudiantes=estudiantes,
                            now=f"{hoy.day:02d}/{hoy.month:02d}/{hoy.year}",
                            fecha_corte_iso=fc.isoformat())
 
@@ -577,7 +644,7 @@ def generar_sigsa22():
     distrito_salud = request.form.get("distrito_salud", "").strip()
     municipio = request.form.get("municipio", "").strip()
     servicio_salud = request.form.get("servicio_salud", "").strip()
-    responsable_informacion = request.form.get("responsable_informacion", "").strip()
+    responsable_informacion = session.get("nombre_responsable", "").strip()
     cargo = request.form.get("cargo", "").strip()
     mes_reporte = request.form.get("mes_reporte", "").strip()
     anio_reporte = request.form.get("anio_reporte", "").strip()
@@ -720,7 +787,8 @@ def _normalizar_tipo_centro(valor):
 def _generar_sisca_para_escuela(codigo_centro, uid, fecha_corte, responsable,
                                  cargo, area_salud, distrito_salud,
                                  servicio_salud, tipo_centro, jornada,
-                                 fecha_reporte=None):
+                                 fecha_reporte=None,
+                                 pueblo_default="", pueblos_individuales=None):
     """
     Genera una ficha SISCA para una escuela y retorna (ruta_salida, nombre_escuela, error_msg).
     error_msg es None si todo salio bien.
@@ -733,7 +801,13 @@ def _generar_sisca_para_escuela(codigo_centro, uid, fecha_corte, responsable,
         return None, None, f"Escuela no encontrada: {codigo_centro}"
 
     nombre_escuela = escuela["nombre_centro"]
-    tipo_centro = escuela.get("tipo_centro", "PUBLICO") or "PUBLICO"
+    sector = (tipo_centro or "").strip().upper()
+    if "PRIVAD" in sector:
+        tipo_centro = "PRIVADO"
+    elif "PUBLIC" in sector or "PÚBLIC" in sector:
+        tipo_centro = "PUBLICO"
+    else:
+        tipo_centro = ""
     registros = fetchall("""
         SELECT e.cui, e.nombre_completo, e.sexo, e.fecha_nacimiento,
                e.grado, e.seccion
@@ -759,6 +833,13 @@ def _generar_sisca_para_escuela(codigo_centro, uid, fecha_corte, responsable,
         nombre = r["nombre_completo"]
         cui = r["cui"]
         if edad is not None and 6 <= edad <= 14:
+            pueblo = ""
+            if pueblos_individuales:
+                pueblo = (pueblos_individuales.get(cui) or "").strip()
+            if pueblo == "__blanco__":
+                pueblo = ""
+            elif not pueblo:
+                pueblo = pueblo_default
             aptos.append({
                 "nombre": nombre,
                 "cui": cui,
@@ -768,6 +849,7 @@ def _generar_sisca_para_escuela(codigo_centro, uid, fecha_corte, responsable,
                 "anio": anio_i,
                 "grado": r["grado"] or "",
                 "seccion": r["seccion"] or "",
+                "pueblo": pueblo,
             })
 
     if not aptos:
@@ -807,16 +889,21 @@ def procesar_sisca():
 
     # ── Leer campos del formulario ────────────────────────────────────────
     codigo_centro = request.form.get("codigo_centro", "").strip()
-    responsable = request.form.get("responsable", "").strip()
+    responsable = session.get("nombre_responsable", "").strip()
     cargo = request.form.get("cargo", "").strip()
     area_salud = request.form.get("area_salud", "").strip()
     distrito_salud = request.form.get("distrito_salud", "").strip()
     servicio_salud = request.form.get("servicio_salud", "").strip()
-    tipo_centro = request.form.get("tipo_centro", "PUBLICO").strip().upper()
+    tipo_centro = request.form.get("tipo_centro", "").strip()
     fecha_reporte = request.form.get("fecha_reporte", "").strip()
     fecha_corte_str = request.form.get("fecha_corte", "").strip()
     jornada = request.form.get("jornada", "Primera Jornada").strip()
     tipo_intervencion = request.form.get("tipo_intervencion", "desparasitacion").strip()
+    pueblo_default = request.form.get("pueblo_default", "").strip()
+    pueblos_individuales = dict(zip(
+        request.form.getlist("alumno_cui"),
+        request.form.getlist("alumno_pueblo"),
+    ))
 
     if not codigo_centro:
         flash("No se selecciono ninguna escuela.", "danger")
@@ -842,32 +929,95 @@ def procesar_sisca():
         fecha_corte = date.today()
 
     # ── Actualizar perfil del usuario ─────────────────────────────────────
+    # El nombre del responsable queda fijo al usuario autenticado y no se
+    # modifica desde el formulario (evita reportes a nombre de terceros).
     execute("""
         UPDATE usuarios
-        SET nombre_responsable=%s, cargo=%s, area_salud=%s, distrito_salud=%s
+        SET cargo=%s, area_salud=%s, distrito_salud=%s
         WHERE id=%s
-    """, (responsable, cargo, area_salud, distrito_salud, session["usuario_id"]))
+    """, (cargo, area_salud, distrito_salud, session["usuario_id"]))
     commit()
-    session.update(nombre_responsable=responsable, cargo=cargo,
+    session.update(cargo=cargo,
                    area_salud=area_salud, distrito_salud=distrito_salud)
 
     uid = session["usuario_id"]
     ruta_salida, nombre_escuela, error = _generar_sisca_para_escuela(
         codigo_centro, uid, fecha_corte, responsable, cargo,
-        area_salud, distrito_salud, servicio_salud, "PUBLICO", jornada,
+        area_salud, distrito_salud, servicio_salud, tipo_centro, jornada,
         fecha_reporte=fecha_reporte if fecha_reporte else None,
+        pueblo_default=pueblo_default,
+        pueblos_individuales=pueblos_individuales,
     )
 
     if error:
         flash(error, "danger" if "Error" in error else "warning")
         return redirect(url_for("dashboard"))
 
-    return send_file(
-        ruta_salida,
+    file_id = uuid.uuid4().hex[:12]
+    _ficha_set(file_id,
+               ruta=ruta_salida,
+               codigo=codigo_centro,
+               tipo=tipo_intervencion,
+               nombre=nombre_escuela)
+    return jsonify({
+        "file_id": file_id,
+        "codigo": codigo_centro,
+        "tipo": tipo_intervencion,
+        "nombre": nombre_escuela,
+    })
+
+
+@app.route("/sisca/descargar_individual/<file_id>")
+def sisca_descargar_individual(file_id):
+    """Sirve la ficha SISCA individual en el formato elegido (xlsx o pdf)."""
+    if "usuario_id" not in session:
+        return login_requerido()
+
+    ficha = _ficha_get(file_id)
+    if not ficha:
+        return jsonify({"error": "El archivo ya expiró. Vuelve a generar la ficha."}), 404
+    ruta = ficha.get("ruta")
+    if not ruta or not os.path.exists(ruta):
+        return jsonify({"error": "El archivo ya no existe en el servidor."}), 404
+
+    formato = request.args.get("formato", "xlsx").lower()
+    tipo = ficha.get("tipo", "desparasitacion")
+    codigo = ficha.get("codigo", "")
+    base_nombre = f"SISCA_{codigo}_{tipo}"
+
+    if formato == "pdf":
+        ruta_pdf = os.path.splitext(ruta)[0] + ".pdf"
+        ok, err = pdf_conversion.xlsx_a_pdf(ruta, ruta_pdf)
+        if not ok:
+            return jsonify({"error": err}), 500
+        archivo = ruta_pdf
+        download_name = f"{base_nombre}.pdf"
+        mimetype = "application/pdf"
+    else:
+        archivo = ruta
+        download_name = f"{base_nombre}.xlsx"
+        mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    response = send_file(
+        archivo,
         as_attachment=True,
-        download_name=f"SISCA_{codigo_centro}_{tipo_intervencion}.xlsx",
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        download_name=download_name,
+        mimetype=mimetype,
     )
+
+    @response.call_on_close
+    def _cleanup():
+        try:
+            if os.path.exists(ruta):
+                os.remove(ruta)
+            pdf2 = os.path.splitext(ruta)[0] + ".pdf"
+            if os.path.exists(pdf2):
+                os.remove(pdf2)
+        except Exception:
+            pass
+        _ficha_clean(file_id)
+
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -884,7 +1034,7 @@ def procesar_sisca_masiva():
         flash("No se selecciono ninguna escuela.", "danger")
         return redirect(url_for("sisca_form"))
 
-    responsable = request.form.get("responsable", "").strip()
+    responsable = session.get("nombre_responsable", "").strip()
     cargo = request.form.get("cargo", "").strip()
     area_salud = request.form.get("area_salud", "").strip()
     distrito_salud = request.form.get("distrito_salud", "").strip()
@@ -893,6 +1043,7 @@ def procesar_sisca_masiva():
     fecha_corte_str = request.form.get("fecha_corte", "").strip()
     jornada = request.form.get("jornada", "Primera Jornada").strip()
     tipo_intervencion = request.form.get("tipo_intervencion", "desparasitacion").strip()
+    pueblo_default = request.form.get("pueblo_default", "").strip()
 
     if not all([responsable, cargo, area_salud, distrito_salud, servicio_salud]):
         flash("Completa todos los campos obligatorios del encabezado.", "danger")
@@ -915,11 +1066,11 @@ def procesar_sisca_masiva():
     uid = session["usuario_id"]
     execute("""
         UPDATE usuarios
-        SET nombre_responsable=%s, cargo=%s, area_salud=%s, distrito_salud=%s
+        SET cargo=%s, area_salud=%s, distrito_salud=%s
         WHERE id=%s
-    """, (responsable, cargo, area_salud, distrito_salud, uid))
+    """, (cargo, area_salud, distrito_salud, uid))
     commit()
-    session.update(nombre_responsable=responsable, cargo=cargo,
+    session.update(cargo=cargo,
                    area_salud=area_salud, distrito_salud=distrito_salud)
 
     job_id = uuid.uuid4().hex[:12]
@@ -939,6 +1090,7 @@ def procesar_sisca_masiva():
              servicio_salud=servicio_salud,
              jornada=jornada,
              fecha_reporte=fecha_reporte if fecha_reporte else None,
+             pueblo_default=pueblo_default,
              codigos=list(codigos),
              tipo_intervencion=tipo_intervencion,
              )
@@ -978,6 +1130,7 @@ def _background_sisca_masivo_inner(job_id):
                 job["cargo"], job["area_salud"], job["distrito_salud"],
                 job["servicio_salud"], "PUBLICO", job["jornada"],
                 fecha_reporte=job["fecha_reporte"],
+                pueblo_default=job.get("pueblo_default", ""),
             )
             if err:
                 errores.append(err)
@@ -1042,21 +1195,70 @@ def sisca_descargar(job_id):
     if not zip_path or not os.path.exists(zip_path):
         return jsonify({"error": "Archivo no encontrado"}), 404
     tipo = job.get("tipo_intervencion", "desparasitacion")
+    formato = request.args.get("formato", "xlsx").lower()
+
+    archivo_a_enviar = zip_path
+    download_name = f"SISCA_masivo_{tipo}.zip"
+    mimetype = "application/zip"
+    temp_dir = None
+
+    if formato == "pdf":
+        # Convierte cada XLSX del ZIP a PDF y vuelve a empaquetar.
+        temp_dir = tempfile.mkdtemp(prefix="sisca_pdf_")
+        try:
+            pdfs = []
+            with zipfile.ZipFile(zip_path) as zf:
+                for nombre in zf.namelist():
+                    if not nombre.lower().endswith(".xlsx"):
+                        continue
+                    ruta_xlsx = os.path.join(temp_dir, nombre)
+                    with open(ruta_xlsx, "wb") as f:
+                        f.write(zf.read(nombre))
+                    ruta_pdf = os.path.join(
+                        temp_dir, os.path.splitext(nombre)[0] + ".pdf")
+                    ok, err = pdf_conversion.xlsx_a_pdf(ruta_xlsx, ruta_pdf)
+                    if not ok:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        return jsonify({"error": f"{os.path.basename(nombre)}: {err}"}), 500
+                    pdfs.append(ruta_pdf)
+            if not pdfs:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return jsonify({"error": "El ZIP no contenía archivos Excel."}), 500
+            archivo_a_enviar = os.path.join(
+                temp_dir, f"SISCA_masivo_{tipo}_pdf.zip")
+            with zipfile.ZipFile(archivo_a_enviar, "w", zipfile.ZIP_DEFLATED) as zf:
+                for p in pdfs:
+                    zf.write(p, arcname=os.path.basename(p))
+            download_name = f"SISCA_masivo_{tipo}.pdf.zip"
+        except Exception as exc:
+            if temp_dir:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            return jsonify({"error": f"Error al generar el ZIP en PDF: {exc}"}), 500
+
     response = send_file(
-        zip_path,
+        archivo_a_enviar,
         as_attachment=True,
-        download_name=f"SISCA_masivo_{tipo}.zip",
-        mimetype="application/zip",
+        download_name=download_name,
+        mimetype=mimetype,
     )
+
     @response.call_on_close
     def _cleanup():
         try:
+            if temp_dir:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
             zip_dir = os.path.dirname(zip_path)
-            os.remove(zip_path)
-            os.rmdir(zip_dir)
+            if os.path.isdir(zip_dir):
+                try:
+                    os.rmdir(zip_dir)
+                except Exception:
+                    pass
         except Exception:
             pass
         _job_clean(job_id)
+
     return response
 
 
