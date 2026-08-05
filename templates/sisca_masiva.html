@@ -167,6 +167,35 @@
 
     if (!form) return;
 
+    function nombreDeDescarga(disposition, porDefecto) {
+        if (!disposition) return porDefecto;
+        var m = /filename="?([^";]+)"?/i.exec(disposition);
+        return (m && m[1]) ? m[1].trim() : porDefecto;
+    }
+
+    function descargarFormato(url) {
+        fetch(url)
+            .then(function(resp) {
+                if (!resp.ok) {
+                    return resp.json()
+                        .catch(function() { return {}; })
+                        .then(function(d) { throw new Error(d.error || ('Error del servidor: ' + resp.status)); });
+                }
+                return resp.blob().then(function(blob) {
+                    var a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = nombreDeDescarga(resp.headers.get('Content-Disposition'), 'descarga');
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(function() { URL.revokeObjectURL(a.href); }, 4000);
+                });
+            })
+            .catch(function(err) {
+                alert('No se pudo descargar: ' + err.message);
+            });
+    }
+
     form.addEventListener('submit', function(e) {
         e.preventDefault();
         if (btnMasivo.disabled) return;
@@ -309,20 +338,10 @@
 
                 var downloadUrl = '{{ url_for("sisca_descargar", job_id="") }}' + jobId;
                 btnDescargarExcel.onclick = function() {
-                    var a = document.createElement('a');
-                    a.href = downloadUrl + '?formato=xlsx';
-                    a.download = '';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
+                    descargarFormato(downloadUrl + '?formato=xlsx');
                 };
                 btnDescargarPDF.onclick = function() {
-                    var a = document.createElement('a');
-                    a.href = downloadUrl + '?formato=pdf';
-                    a.download = '';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
+                    descargarFormato(downloadUrl + '?formato=pdf');
                 };
             }, 300);
         }, 600);
