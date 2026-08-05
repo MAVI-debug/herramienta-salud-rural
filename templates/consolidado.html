@@ -99,11 +99,10 @@
                         <td>{{ ns.f + ns.m }}</td>
                         <td>
                             <span class="toggle-arrow">▼</span>
-                            {% if m.codigo %}
-                            <form method="POST" action="{{ url_for('eliminar_escuela', codigo_centro=m.codigo) }}" style="display:inline;">
+                            <form method="POST" action="{{ url_for('eliminar_escuela') }}" style="display:inline;">
+                                <input type="hidden" name="codigo_centro" value="{{ m.codigo }}">
                                 <button type="submit" class="btn-eliminar" onclick="return confirm('¿Eliminar {{ m.nombre }}?')">✕</button>
                             </form>
-                            {% endif %}
                         </td>
                     </tr>
                     <tr class="detalle-row" id="detalle-{{ loop.index }}">

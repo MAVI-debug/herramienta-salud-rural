@@ -1609,8 +1609,12 @@ def eliminar_escuela(codigo_centro=""):
     if "usuario_id" not in session:
         return login_requerido()
     uid = session["usuario_id"]
-    codigo_centro = (codigo_centro or request.values.get("codigo_centro") or "").strip()
-    if not codigo_centro:
+    # El código llega como campo del formulario (puede ser '' en una escuela
+    # sin código) o por la URL en versiones antiguas.
+    if "codigo_centro" in request.values:
+        codigo_centro = request.values.get("codigo_centro") or ""
+    codigo_centro = (codigo_centro or "").strip()
+    if "codigo_centro" not in request.values and not codigo_centro:
         flash("Código de escuela no válido.", "warning")
         return redirect(url_for("consolidado"))
     execute("DELETE FROM escuelas WHERE codigo_centro = %s AND usuario_id = %s",
