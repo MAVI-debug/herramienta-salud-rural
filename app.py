@@ -24,6 +24,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from db import get_db, fetchone, fetchall, execute, commit, rollback, close_db
 
 import sisca_logic
+from limpiar_escuela_sin_nombre import limpiar_escuela_sin_nombre
 
 # ---------------------------------------------------------------------------
 # Configuración
@@ -263,6 +264,29 @@ def admin_usuarios():
     )
     return render_template("admin_usuarios.html",
                            usuarios=[dict(u) for u in usuarios])
+
+
+@app.route("/admin/limpiar_escuela_sin_nombre", methods=["POST"])
+def admin_limpiar_escuela_sin_nombre():
+    if "usuario_id" not in session:
+        return login_requerido()
+    if not (session.get("es_admin") or session.get("is_admin")) or session.get("usuario") != "mavi":
+        flash("No tienes permisos para acceder a esta sección.", "danger")
+        return redirect(url_for("dashboard"))
+    try:
+        resumen = limpiar_escuela_sin_nombre(session["usuario_id"])
+    except Exception:
+        rollback()
+        flash("Error al ejecutar la limpieza. Revisa los logs.", "danger")
+        return redirect(url_for("dashboard"))
+    n = len(resumen["escuelas"])
+    h = resumen["huerfanos"]
+    if n:
+        flash(f"Limpieza completada: {n} escuela(s) sin nombre eliminada(s) "
+              f"y {h} registro(s) huérfano(s) borrado(s).", "success")
+    else:
+        flash("No había escuelas sin nombre que limpiar.", "info")
+    return redirect(url_for("dashboard"))
 
 
 # ---------------------------------------------------------------------------

@@ -408,6 +408,20 @@ body {
     background: linear-gradient(135deg, #b26a00, #7a4a00);
     box-shadow: 0 4px 14px rgba(178, 106, 0, 0.20);
 }
+.btn-form-accion button {
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 0;
+    letter-spacing: inherit;
+}
 
 /* ─── SISCA Masivo ───────────────────────────── */
 .masiva-toolbar {
