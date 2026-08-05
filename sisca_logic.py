@@ -10,6 +10,7 @@ from io import BytesIO
 from typing import Optional
 
 import pypdf
+import pdfplumber
 import openpyxl
 import openpyxl.utils
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -83,6 +84,264 @@ def calcular_edad_a_fecha_corte(dia_nac, mes_nac, anio_nac, fecha_corte: date):
         return edad
     except Exception:
         return None
+
+# ---------------------------------------------------------------------------
+#  Formato "ESOLARES" (nuevo): encabezado con nombre de escuela + codigo,
+#  y bloques por grado con columnas No./NOMBRE/CUI/GENERO(F M)/FECHA(Dia Mes Anio).
+#  Detectado por las etiquetas "Nombre de la Escuela", "Codigo", "Dia", "Mes".
+# ---------------------------------------------------------------------------
+
+_ENCABEZADOS_ESOLARES = {
+    "nombre de la escuela", "codigo", "fecha", "no.", "nombre", "cui",
+    "genero", "fecha de nacimiento", "nacimiento", "edad",
+    "dia", "mes", "año", "ano", "f", "m",
+}
+
+_GRADOS_ESOLARES = {
+    "preprimaria", "pre-primaria", "primaria", "basicos", "basico",
+    "primero", "segundo", "tercero", "cuarto", "quinto", "sexto",
+    "septimo", "octavo", "noveno", "decimo", "undecimo", "duodecimo",
+}
+
+_RE_CODIGO_ESCUELA = re.compile(r"\d{1,2}-\d{1,2}-\d{2,5}-\d{1,3}")
+_RE_CUI = re.compile(r"\d{13}")
+_RE_ANIO = re.compile(r"(?:19|20)\d{2}")
+_RE_ORDEN_INICIO = re.compile(r"^(\d{1,3})[A-ZÁÉÍÓÚÑ]")
+_RE_LETRAS = re.compile(r"[A-ZÁÉÍÓÚÑ]+")
+
+def _dividir_nombre_completo(texto_limpio):
+    """Divide un nombre completo en (apellidos, nombres) por la mitad."""
+    chunks = re.split(r"\s{2,}", texto_limpio)
+    palabras = []
+    for chunk in chunks:
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        for palabra in chunk.split():
+            if (len(palabra) >= 2
+                    and re.match(r"^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\.\-]*$",
+                                 palabra, re.IGNORECASE)):
+                palabras.append(palabra.upper())
+    ap = ""
+    nom = ""
+    if len(palabras) >= 4:
+        mitad = len(palabras) // 2
+        ap = " ".join(palabras[:mitad])
+        nom = " ".join(palabras[mitad:])
+    elif len(palabras) == 3:
+        ap = " ".join(palabras[:2])
+        nom = palabras[2]
+    elif len(palabras) == 2:
+        ap = palabras[0]
+        nom = palabras[1]
+    elif len(palabras) == 1:
+        ap = palabras[0]
+    return ap, nom
+
+def _agrupar_filas_por_top(words):
+    filas = []
+    for w in sorted(words, key=lambda x: (x["top"], x["x0"])):
+        if filas and abs(w["top"] - filas[-1]["top"]) <= 3:
+            filas[-1]["words"].append(w)
+        else:
+            filas.append({"top": w["top"], "words": [w]})
+    for f in filas:
+        f["words"].sort(key=lambda x: x["x0"])
+    return filas
+
+def _col_bounds_esolares(words):
+    """Límites de columnas derivados del encabezado (o valores por defecto)."""
+    dia = mes = anyo = fcol = mcol = None
+    for w in words:
+        t = _normalizar(w["text"])
+        cx = (w["x0"] + w["x1"]) / 2.0
+        if t == "dia":
+            dia = cx
+        elif t == "mes":
+            mes = cx
+        elif t in ("año", "ano"):
+            anyo = cx
+        elif t == "f" and 330 <= w["x0"] <= 380:
+            fcol = cx
+        elif t == "m" and 360 <= w["x0"] <= 420:
+            mcol = cx
+    mid_dm = (dia + mes) / 2.0 if (dia and mes) else 447.0
+    mid_ma = (mes + anyo) / 2.0 if (mes and anyo) else 479.0
+    mid_fm = (fcol + mcol) / 2.0 if (fcol and mcol) else 370.5
+    return mid_dm, mid_ma, mid_fm
+
+def _procesar_fila_esolares(words, mid_dm, mid_ma, mid_fm, grado_actual):
+    if not words:
+        return None
+
+    primera = words[0]
+    num = None
+    nombre_inicial = ""
+    resto = words[1:]
+
+    m = _RE_ORDEN_INICIO.match(primera["text"])
+    if m:
+        num = m.group(1)
+        nombre_inicial = primera["text"][len(num):]
+    elif re.fullmatch(r"\d{1,3}", primera["text"]) and len(words) > 1:
+        num = primera["text"]
+        nombre_inicial = words[1]["text"]
+        resto = words[2:]
+
+    if num is None:
+        return None
+
+    cui = ""
+    genero = ""
+    dia = mes = anio = None
+    tokens_nombre = [nombre_inicial]
+
+    for w in resto:
+        t = w["text"]
+        cx = (w["x0"] + w["x1"]) / 2.0
+        if _RE_CUI.fullmatch(t):
+            cui = t
+        elif t == "X" and 335 <= w["x0"] <= 415:
+            genero = "F" if cx < mid_fm else "M"
+        elif cx < mid_dm and re.fullmatch(r"\d{1,2}", t) and int(t) <= 31:
+            dia = t
+        elif cx < mid_ma and re.fullmatch(r"\d{1,2}", t) and int(t) <= 12:
+            mes = t
+        elif cx <= 520 and _RE_ANIO.fullmatch(t):
+            anio = t
+        elif 80 <= w["x0"] and w["x1"] <= 293:
+            tokens_nombre.append(t)
+
+    if not cui and not genero:
+        return None
+
+    fecha_nac = ""
+    if dia and mes and anio:
+        fecha_nac = f"{int(dia)}/{int(mes)}/{anio}"
+
+    nombre = " ".join(x for x in tokens_nombre if x)
+    ap, nom = _dividir_nombre_completo(nombre)
+    if not (ap or nom):
+        return None
+
+    return {
+        "grado": grado_actual,
+        "seccion": "",
+        "apellidos": ap,
+        "nombres": nom,
+        "fecha_nac": fecha_nac,
+        "cui": cui,
+        "genero": genero,
+    }
+
+def _extraer_alumnos_esolares(ruta_pdf: str) -> list:
+    alumnos = []
+    grado_actual = ""
+    cuis_vistos = set()
+
+    try:
+        pdf = pdfplumber.open(ruta_pdf)
+    except Exception as e:
+        print(f"[extraer_alumnos_pdf] No se pudo abrir PDF: {e}")
+        return alumnos
+
+    try:
+        for pagina in pdf.pages:
+            words = pagina.extract_words()
+            mid_dm, mid_ma, mid_fm = _col_bounds_esolares(words)
+            for fila in _agrupar_filas_por_top(words):
+                ws = fila["words"]
+                norm = {_normalizar(w["text"]) for w in ws}
+                if norm & _ENCABEZADOS_ESOLARES:
+                    continue
+                if (len(ws) == 1 and ws[0]["x0"] < 130
+                        and _RE_LETRAS.fullmatch(ws[0]["text"])):
+                    g = _normalizar(ws[0]["text"])
+                    if g in _GRADOS_ESOLARES:
+                        grado_actual = ws[0]["text"].upper()
+                        continue
+                alumno = _procesar_fila_esolares(ws, mid_dm, mid_ma, mid_fm, grado_actual)
+                if not alumno:
+                    continue
+                if not alumno["grado"]:
+                    alumno["grado"] = "PRIMERO"
+                key = alumno["cui"] or f"{alumno['apellidos']}{alumno['nombres']}{alumno['fecha_nac']}"
+                if key in cuis_vistos:
+                    continue
+                cuis_vistos.add(key)
+                alumnos.append(alumno)
+    finally:
+        try:
+            pdf.close()
+        except Exception:
+            pass
+        gc.collect()
+
+    return alumnos
+
+def _es_formato_esolares(texto_pag1: str) -> bool:
+    t = (texto_pag1 or "").lower()
+    return ("nombre de la escuela" in t
+            and "codigo" in t
+            and "dia" in t
+            and "mes" in t)
+
+def _extraer_metadatos_esolares(ruta_pdf: str):
+    try:
+        with pdfplumber.open(ruta_pdf) as pdf:
+            page = pdf.pages[0]
+            words = page.extract_words()
+    except Exception:
+        return "", "", ""
+
+    label_top = None
+    codigo_label_top = None
+    for w in words:
+        t = _normalizar(w["text"])
+        if label_top is None and t == "nombre" and w["top"] < 110:
+            label_top = w["top"]
+        elif t == "codigo":
+            codigo_label_top = w["top"]
+
+    if label_top is None or codigo_label_top is None:
+        return "", "", ""
+
+    codigo = ""
+    for w in words:
+        if _RE_CODIGO_ESCUELA.fullmatch(w["text"]):
+            codigo = w["text"]
+            break
+
+    fin = None
+    for w in words:
+        if _normalizar(w["text"]) in _ENCABEZADOS_ESOLARES and w["top"] > label_top + 5:
+            fin = w["top"] if fin is None else min(fin, w["top"])
+    if fin is None:
+        fin = codigo_label_top + 100
+
+    excl = {"nombre de la escuela", "codigo", "fecha"}
+    lineas = {}
+    for w in words:
+        if w["top"] <= label_top or w["top"] >= fin:
+            continue
+        t = w["text"]
+        tn = _normalizar(t)
+        if tn in excl:
+            continue
+        if _RE_CODIGO_ESCUELA.fullmatch(t):
+            continue
+        if re.fullmatch(r"\d{1,2}/\d{1,2}/\d{4}", t):
+            continue
+        key = round(w["top"])
+        lineas.setdefault(key, []).append(w)
+
+    partes = []
+    for key in sorted(lineas):
+        linea = " ".join(x["text"] for x in sorted(lineas[key], key=lambda x: x["x0"]))
+        partes.append(linea)
+    nombre = " ".join(partes).strip()
+
+    return nombre, "", codigo
 
 # ---------------------------------------------------------------------------
 #  Extraccion del PDF
@@ -323,6 +582,15 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
         print(f"[extraer_alumnos_pdf] No se pudo abrir PDF: {e}")
         return alumnos
 
+    try:
+        texto_pag1 = reader.pages[0].extract_text() or ""
+    except Exception:
+        texto_pag1 = ""
+    if _es_formato_esolares(texto_pag1):
+        del reader
+        gc.collect()
+        return _extraer_alumnos_esolares(ruta_pdf)
+
     for idx in range(total):
         texto = ""
         try:
@@ -358,6 +626,9 @@ def extraer_metadatos_encabezado_pdf(ruta_pdf: str):
         return "", "", ""
     finally:
         gc.collect()
+
+    if _es_formato_esolares(texto_pag1):
+        return _extraer_metadatos_esolares(ruta_pdf)
 
     lineas = texto_pag1.splitlines()[:_MAX_LINEAS_ENCABEZADO]
     texto_top = "\n".join(lineas)

@@ -23,6 +23,17 @@ from openpyxl.workbook.properties import CalcProperties
 from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as XLImage, _import_image
 
+# Extraccion del formato ESOLARES delegada a sisca_logic (si esta disponible).
+try:
+    from sisca_logic import (
+        _es_formato_esolares,
+        _extraer_alumnos_esolares,
+        _extraer_metadatos_esolares,
+    )
+    _SISCA_LOGIC_ESOLARES = True
+except Exception:
+    _SISCA_LOGIC_ESOLARES = False
+
 
 # =============================================================================
 #  CONFIGURACIÓN INSTITUCIONAL
@@ -169,6 +180,15 @@ def extraer_alumnos_pdf(ruta_pdf: str) -> list:
     grado_actual   = ""
     seccion_actual = ""
 
+    if _SISCA_LOGIC_ESOLARES:
+        try:
+            with pdfplumber.open(ruta_pdf) as pdf:
+                texto_pag1 = pdf.pages[0].extract_text() or ""
+        except Exception:
+            texto_pag1 = ""
+        if _es_formato_esolares(texto_pag1):
+            return _extraer_alumnos_esolares(ruta_pdf)
+
     def es_fila_alumno(fila):
         return (fila and len(fila) >= 9 and str(fila[0] or "").strip().isdigit())
 
@@ -245,6 +265,9 @@ def extraer_metadatos_encabezado_pdf(ruta_pdf: str):
             texto_pag1 = pdf.pages[0].extract_text() or ""
     except Exception:
         return "", "", ""
+
+    if _SISCA_LOGIC_ESOLARES and _es_formato_esolares(texto_pag1):
+        return _extraer_metadatos_esolares(ruta_pdf)
 
     lineas = texto_pag1.splitlines()[:_MAX_LINEAS_ENCABEZADO]
     texto_top = "\n".join(lineas)
