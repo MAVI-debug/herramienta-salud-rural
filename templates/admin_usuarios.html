@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Administración de Usuarios — TSR{% endblock %}
+{% block contenido %}
+<div class="registro-page" style="max-width:980px;">
+    <a href="/dashboard" class="btn-retorno" style="margin-bottom:0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        Volver al Panel
+    </a>
+    <div class="registro-card" style="max-width:none;">
+        <div class="registro-header">
+            <div class="registro-icono">👥</div>
+            <h2>Administración de Usuarios</h2>
+            <p class="registro-sub">Lista de TSR registrados y creación de nuevos accesos.</p>
+        </div>
+        <a href="{{ url_for('registrar_tsr') }}" class="btn-descarga-grande" style="display:block;text-align:center;">➕ Registrar TSR</a>
+
+        <div class="tabla-scroll" style="margin-top:20px;">
+            <table class="tabla consol-tabla">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Usuario</th>
+                        <th>Nombre</th>
+                        <th>Cargo</th>
+                        <th>Área de Salud</th>
+                        <th>Distrito</th>
+                        <th>Admin</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in usuarios %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ u.usuario }}</td>
+                        <td>{{ u.nombre_responsable }}</td>
+                        <td>{{ u.cargo }}</td>
+                        <td>{{ u.area_salud }}</td>
+                        <td>{{ u.distrito_salud }}</td>
+                        <td>{{ 'Sí' if u.es_admin else 'No' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

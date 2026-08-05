@@ -100,6 +100,12 @@
             <span class="accion-icono">📋</span>
             <span class="accion-texto">SISCA</span>
         </a>
+        {% if session.get('es_admin') and session.get('usuario') == 'mavi' %}
+        <a href="{{ url_for('admin_usuarios') }}" class="btn-accion btn-admin">
+            <span class="accion-icono">👥</span>
+            <span class="accion-texto">Usuarios</span>
+        </a>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

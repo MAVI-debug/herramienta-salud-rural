@@ -243,6 +243,26 @@ def registrar_tsr():
 
 
 # ---------------------------------------------------------------------------
+# Rutas — Administración de usuarios (solo mavi)
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/usuarios")
+def admin_usuarios():
+    if "usuario_id" not in session:
+        return login_requerido()
+    if not session.get("es_admin") or session.get("usuario") != "mavi":
+        flash("No tienes permisos para acceder a esta sección.", "danger")
+        return redirect(url_for("dashboard"))
+
+    usuarios = fetchall(
+        "SELECT id, usuario, nombre_responsable, cargo, area_salud, distrito_salud, es_admin "
+        "FROM usuarios ORDER BY id"
+    )
+    return render_template("admin_usuarios.html",
+                           usuarios=[dict(u) for u in usuarios])
+
+
+# ---------------------------------------------------------------------------
 # Ruta única — Cargar datos legacy a usuarios existentes
 # ---------------------------------------------------------------------------
 
@@ -1222,12 +1242,17 @@ def _obtener_fecha_corte(uid=None):
     if uid is None:
         uid = session.get("usuario_id", 0)
     fila = fetchone("SELECT fecha_corte FROM usuarios WHERE id = %s", (uid,))
-    if fila and fila.get("fecha_corte"):
+    if fila:
         try:
-            partes = fila["fecha_corte"].split("/")
-            return date(int(partes[2]), int(partes[1]), int(partes[0]))
+            fc = fila["fecha_corte"]
         except Exception:
-            pass
+            fc = None
+        if fc:
+            try:
+                partes = fc.split("/")
+                return date(int(partes[2]), int(partes[1]), int(partes[0]))
+            except Exception:
+                pass
     return date.today()
 
 

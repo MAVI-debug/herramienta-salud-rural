@@ -127,6 +127,19 @@ body {
     color: var(--color-mint);
     transform: scale(1.15);
 }
+.navbar .nav-admin-users {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(9, 209, 199, 0.35);
+    color: var(--color-mint);
+    line-height: 1;
+}
+.navbar .nav-admin-users:hover {
+    background: rgba(9, 209, 199, 0.12);
+    transform: none;
+}
 
 /* ─── Alertas ───────────────────────────────── */
 .alerta {
@@ -390,6 +403,10 @@ body {
 .btn-sisca {
     background: linear-gradient(135deg, #6a3a8a, #3a1a5a);
     box-shadow: 0 4px 14px rgba(106, 58, 138, 0.20);
+}
+.btn-admin {
+    background: linear-gradient(135deg, #b26a00, #7a4a00);
+    box-shadow: 0 4px 14px rgba(178, 106, 0, 0.20);
 }
 
 /* ─── SISCA Masivo ───────────────────────────── */
