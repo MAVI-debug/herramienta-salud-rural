@@ -793,7 +793,7 @@ def _xlsx_a_pdf(ruta_xlsx, ruta_pdf):
     if not os.path.exists(ruta_xlsx):
         return False, "El archivo Excel no existe."
 
-    soffice = shutil.which("soffice")
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if not soffice:
         for candidato in (
             "/usr/bin/soffice",
@@ -809,12 +809,15 @@ def _xlsx_a_pdf(ruta_xlsx, ruta_pdf):
                        "(falta LibreOffice). Descarga la ficha en Excel (.xlsx).")
 
     try:
+        env = dict(os.environ)
+        env.setdefault("HOME", "/tmp")
         resultado = subprocess.run(
-            [soffice, "--headless", "--norestore",
+            [soffice, "-env:UserInstallation=file:///tmp/lo_profile_sisca",
+             "--headless", "--norestore",
              "--convert-to", "pdf",
              "--outdir", os.path.dirname(os.path.abspath(ruta_pdf)),
              os.path.abspath(ruta_xlsx)],
-            capture_output=True, text=True, timeout=180,
+            capture_output=True, text=True, timeout=180, env=env,
         )
     except Exception as exc:
         return False, f"Error al ejecutar la conversión a PDF: {exc}"
