@@ -578,11 +578,11 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
 
     paginas = [[]]
     for grupo in grupos:
-        filas_necesarias = 1 + len(grupo["alumnos"])
-        if paginas[-1] and len(paginas[-1]) + filas_necesarias > SISCA_FILAS_POR_HOJA:
-            paginas.append([])
-        paginas[-1].append({"tipo": "divisor", "texto": grupo["texto"]})
-        for alumno in grupo["alumnos"]:
+        for idx_alumno, alumno in enumerate(grupo["alumnos"]):
+            if idx_alumno == 0:
+                if len(paginas[-1]) + 2 > SISCA_FILAS_POR_HOJA:
+                    paginas.append([])
+                paginas[-1].append({"tipo": "divisor", "texto": grupo["texto"]})
             if len(paginas[-1]) >= SISCA_FILAS_POR_HOJA:
                 paginas.append([])
             paginas[-1].append({"tipo": "alumno", "alumno": alumno})
