@@ -1865,6 +1865,37 @@ def cargar_pdf_uno():
 
 
 # ---------------------------------------------------------------------------
+# Limpieza automática al arranque — escuelas sin nombre de 'mavi'
+# ---------------------------------------------------------------------------
+
+_LIMPIEZA_ARRANQUE_HECHA = False
+
+
+@app.before_request
+def _limpieza_arranque():
+    """Una vez por arranque del proceso, elimina las escuelas sin nombre
+    (vacías o corruptas) y los datos huérfanos del usuario 'mavi'."""
+    global _LIMPIEZA_ARRANQUE_HECHA
+    if _LIMPIEZA_ARRANQUE_HECHA:
+        return
+    _LIMPIEZA_ARRANQUE_HECHA = True
+    try:
+        mavi = fetchone("SELECT id FROM usuarios WHERE usuario = 'mavi'")
+        if mavi:
+            resumen = limpiar_escuela_sin_nombre(mavi["id"])
+            if resumen["escuelas"] or resumen["huerfanos"]:
+                print(f"[arranque] Limpieza automatica 'mavi': "
+                      f"{len(resumen['escuelas'])} escuela(s) sin nombre y "
+                      f"{resumen['huerfanos']} registro(s) huerfano(s) eliminado(s).")
+            else:
+                print("[arranque] Limpieza automatica 'mavi': sin datos que limpiar.")
+        else:
+            print("[arranque] Usuario 'mavi' no encontrado; limpieza omitida.")
+    except Exception as e:
+        print(f"[arranque] Limpieza automatica 'mavi' omitida: {type(e).__name__}: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Ejecución
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":

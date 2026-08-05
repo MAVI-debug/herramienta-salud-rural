@@ -105,14 +105,6 @@
             <span class="accion-icono">👥</span>
             <span class="accion-texto">Usuarios</span>
         </a>
-        <form method="POST" action="{{ url_for('admin_limpiar_escuela_sin_nombre') }}"
-              class="btn-accion btn-admin btn-form-accion"
-              onsubmit="return confirm('¿Eliminar las escuelas sin nombre y los datos huérfanos de tu cuenta?');">
-            <button type="submit">
-                <span class="accion-icono">🧹</span>
-                <span class="accion-texto">Limpiar escuela sin nombre</span>
-            </button>
-        </form>
         {% endif %}
     </div>
 </div>
