@@ -510,13 +510,30 @@ def _rellenar_encabezado_sisca(ws_adelante, nombre_escuela: str, codigo_escuela:
         ws_adelante[direccion] = valor
         _aplicar_fuente_encabezado(ws_adelante[direccion])
 
-def _rellenar_alumnos_pagina(ws, fila_inicio: int, alumnos_pagina: list):
+def _escribir_fila_divisoria(ws, fila: int, texto: str):
+    for rng in list(ws.merged_cells.ranges):
+        if rng.min_row == fila and rng.max_row == fila and rng.min_col <= 12:
+            ws.unmerge_cells(str(rng))
+    for col in (12, 13, 14, 15, 16, 17):
+        ws.cell(fila, col, None)
+    ws.merge_cells(start_row=fila, start_column=2, end_row=fila, end_column=12)
+    celda = ws.cell(fila, 2, texto)
+    celda.font = Font(bold=True, size=14, name="Arial", color="FF0000")
+    celda.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[fila].height = 16.55
+
+
+def _rellenar_alumnos_pagina(ws, fila_inicio: int, items_pagina: list):
     for i in range(SISCA_FILAS_POR_HOJA):
         fila = fila_inicio + i
         for col in (2, 12, 13, 14, 15, 16, 17):
             ws.cell(fila, col, None)
-    for i, alumno in enumerate(alumnos_pagina):
+    for i, item in enumerate(items_pagina):
         fila = fila_inicio + i
+        if item.get("tipo") == "divisor":
+            _escribir_fila_divisoria(ws, fila, item["texto"])
+            continue
+        alumno = item["alumno"]
         ws.cell(fila, 2, alumno["nombre"])
         celda_cui = ws.cell(fila, 12, "" if str(alumno["cui"]).startswith("TMP-") else alumno["cui"])
         celda_cui.number_format = "@"
@@ -541,7 +558,36 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
             f"No se encontro la plantilla legal en:\n{ruta_plantilla}")
     wb = openpyxl.load_workbook(ruta_plantilla)
 
-    total_bloques = max(1, math.ceil(len(alumnos_aptos) / SISCA_ALUMNOS_POR_BLOQUE))
+    grupos = []
+    clave_actual = None
+    for alumno in alumnos_aptos:
+        clave = (alumno.get("grado", "") or "", alumno.get("seccion", "") or "")
+        if clave != clave_actual:
+            grado, seccion = clave
+            if grado and seccion:
+                etiqueta = f"{grado} — SECCIÓN {seccion}"
+            elif grado:
+                etiqueta = grado
+            elif seccion:
+                etiqueta = f"SECCIÓN {seccion}"
+            else:
+                etiqueta = "SIN GRADO"
+            grupos.append({"texto": etiqueta, "alumnos": []})
+            clave_actual = clave
+        grupos[-1]["alumnos"].append(alumno)
+
+    paginas = [[]]
+    for grupo in grupos:
+        filas_necesarias = 1 + len(grupo["alumnos"])
+        if paginas[-1] and len(paginas[-1]) + filas_necesarias > SISCA_FILAS_POR_HOJA:
+            paginas.append([])
+        paginas[-1].append({"tipo": "divisor", "texto": grupo["texto"]})
+        for alumno in grupo["alumnos"]:
+            if len(paginas[-1]) >= SISCA_FILAS_POR_HOJA:
+                paginas.append([])
+            paginas[-1].append({"tipo": "alumno", "alumno": alumno})
+
+    total_bloques = max(1, math.ceil(len(paginas) / 2))
     bloques_hojas = [_duplicar_bloque_sisca(wb, i) for i in range(1, total_bloques + 1)]
 
     for idx, (ws_adelante, ws_atras) in enumerate(bloques_hojas, start=1):
@@ -552,12 +598,13 @@ def generar_ficha_sisca_escuela(ruta_plantilla: str, ruta_salida: str,
                                     responsable=responsable, cargo=cargo,
                                     fecha_reporte_str=fecha_reporte_str,
                                     jornada=jornada)
-        inicio = (idx - 1) * SISCA_ALUMNOS_POR_BLOQUE
-        bloque = alumnos_aptos[inicio:inicio + SISCA_ALUMNOS_POR_BLOQUE]
+        pos_inicio = (idx - 1) * 2
+        pagina_adelante = paginas[pos_inicio] if pos_inicio < len(paginas) else []
+        pagina_atras = paginas[pos_inicio + 1] if pos_inicio + 1 < len(paginas) else []
         _rellenar_alumnos_pagina(ws_adelante, SISCA_FILA_INICIO_ADELANTE,
-                                 bloque[:SISCA_FILAS_POR_HOJA])
+                                 pagina_adelante)
         _rellenar_alumnos_pagina(ws_atras, SISCA_FILA_INICIO_ATRAS,
-                                 bloque[SISCA_FILAS_POR_HOJA:SISCA_ALUMNOS_POR_BLOQUE])
+                                 pagina_atras)
 
     try:
         wb.calculation = CalcProperties(fullCalcOnLoad=True)

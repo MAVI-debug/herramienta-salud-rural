@@ -765,6 +765,8 @@ def _generar_sisca_para_escuela(codigo_centro, uid, fecha_corte, responsable,
                 "dia": dia_i,
                 "mes": mes_i,
                 "anio": anio_i,
+                "grado": r["grado"] or "",
+                "seccion": r["seccion"] or "",
             })
 
     if not aptos:
