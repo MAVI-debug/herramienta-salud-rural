@@ -8,7 +8,6 @@ import os
 import gc
 import hashlib
 import shutil
-import subprocess
 import tempfile
 import time
 import zipfile
@@ -784,58 +783,6 @@ def _normalizar_tipo_centro(valor):
     return "PUBLICO"
 
 
-def _xlsx_a_pdf(ruta_xlsx, ruta_pdf):
-    """Convierte un XLSX a PDF usando LibreOffice (soffice) si está disponible.
-
-    Retorna ``(True, None)`` en éxito o ``(False, mensaje_error)``.
-    No usa COM/Excel: es nativo y multiplataforma (Linux/Render).
-    """
-    if not os.path.exists(ruta_xlsx):
-        return False, "El archivo Excel no existe."
-
-    soffice = shutil.which("soffice") or shutil.which("libreoffice")
-    if not soffice:
-        for candidato in (
-            "/usr/bin/soffice",
-            "/usr/bin/libreoffice",
-            r"C:\Program Files\LibreOffice\program\soffice.exe",
-            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-        ):
-            if os.path.exists(candidato):
-                soffice = candidato
-                break
-    if not soffice:
-        return False, ("La exportación a PDF no está disponible en este servidor "
-                       "(falta LibreOffice). Descarga la ficha en Excel (.xlsx).")
-
-    try:
-        env = dict(os.environ)
-        env.setdefault("HOME", "/tmp")
-        resultado = subprocess.run(
-            [soffice, "-env:UserInstallation=file:///tmp/lo_profile_sisca",
-             "--headless", "--norestore",
-             "--convert-to", "pdf",
-             "--outdir", os.path.dirname(os.path.abspath(ruta_pdf)),
-             os.path.abspath(ruta_xlsx)],
-            capture_output=True, text=True, timeout=180, env=env,
-        )
-    except Exception as exc:
-        return False, f"Error al ejecutar la conversión a PDF: {exc}"
-
-    if resultado.returncode != 0:
-        detalle = (resultado.stderr or resultado.stdout or "").strip()[:300]
-        return False, f"La conversión a PDF falló: {detalle}"
-
-    pdf_generado = os.path.splitext(ruta_xlsx)[0] + ".pdf"
-    if os.path.abspath(pdf_generado) != os.path.abspath(ruta_pdf):
-        if os.path.exists(pdf_generado):
-            shutil.move(pdf_generado, ruta_pdf)
-
-    if not os.path.exists(ruta_pdf) or os.path.getsize(ruta_pdf) == 0:
-        return False, "La conversión a PDF no produjo un archivo válido."
-    return True, None
-
-
 def _generar_sisca_para_escuela(codigo_centro, uid, fecha_corte, responsable,
                                  cargo, area_salud, distrito_salud,
                                  servicio_salud, tipo_centro, jornada,
@@ -1038,17 +985,14 @@ def sisca_descargar_individual(file_id):
     base_nombre = f"SISCA_{codigo}_{tipo}"
 
     if formato == "pdf":
-        ruta_pdf = os.path.splitext(ruta)[0] + ".pdf"
-        ok, err = _xlsx_a_pdf(ruta, ruta_pdf)
-        if not ok:
-            return jsonify({"error": err}), 500
-        archivo = ruta_pdf
-        download_name = f"{base_nombre}.pdf"
-        mimetype = "application/pdf"
-    else:
-        archivo = ruta
-        download_name = f"{base_nombre}.xlsx"
-        mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        return jsonify({
+            "error": ("La descarga en PDF no está disponible en este servidor. "
+                      "Descarga la ficha en Excel (.xlsx).")
+        }), 501
+
+    archivo = ruta
+    download_name = f"{base_nombre}.xlsx"
+    mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
     response = send_file(
         archivo,
@@ -1255,37 +1199,10 @@ def sisca_descargar(job_id):
     temp_dir = None
 
     if formato == "pdf":
-        # Convierte cada XLSX del ZIP a PDF y vuelve a empaquetar.
-        temp_dir = tempfile.mkdtemp(prefix="sisca_pdf_")
-        try:
-            pdfs = []
-            with zipfile.ZipFile(zip_path) as zf:
-                for nombre in zf.namelist():
-                    if not nombre.lower().endswith(".xlsx"):
-                        continue
-                    ruta_xlsx = os.path.join(temp_dir, nombre)
-                    with open(ruta_xlsx, "wb") as f:
-                        f.write(zf.read(nombre))
-                    ruta_pdf = os.path.join(
-                        temp_dir, os.path.splitext(nombre)[0] + ".pdf")
-                    ok, err = _xlsx_a_pdf(ruta_xlsx, ruta_pdf)
-                    if not ok:
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        return jsonify({"error": f"{os.path.basename(nombre)}: {err}"}), 500
-                    pdfs.append(ruta_pdf)
-            if not pdfs:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                return jsonify({"error": "El ZIP no contenía archivos Excel."}), 500
-            archivo_a_enviar = os.path.join(
-                temp_dir, f"SISCA_masivo_{tipo}_pdf.zip")
-            with zipfile.ZipFile(archivo_a_enviar, "w", zipfile.ZIP_DEFLATED) as zf:
-                for p in pdfs:
-                    zf.write(p, arcname=os.path.basename(p))
-            download_name = f"SISCA_masivo_{tipo}.pdf.zip"
-        except Exception as exc:
-            if temp_dir:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            return jsonify({"error": f"Error al generar el ZIP en PDF: {exc}"}), 500
+        return jsonify({
+            "error": ("La descarga en PDF no está disponible en este servidor. "
+                      "Descarga el ZIP en Excel (.xlsx).")
+        }), 501
 
     response = send_file(
         archivo_a_enviar,

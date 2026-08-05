@@ -113,8 +113,8 @@
             <p class="loading-sub" style="margin-top:0;">Elige el formato de descarga:</p>
             <div class="formato-descarga">
                 <button id="btnDescargarExcel" class="btn-descarga-grande">⬇️ Descargar en Excel (.xlsx)</button>
-                <button id="btnDescargarPDF" class="btn-descarga-grande btn-descarga-pdf">🖨️ Descargar en PDF</button>
             </div>
+            <p class="loading-sub">El PDF no está disponible en este servidor: descarga en Excel y usa "Imprimir" para generar el PDF.</p>
             <p class="loading-sub" id="erroresSub" style="display:none;color:#ff6b6b;"></p>
             <div class="retorno-exito">
                 <a href="/dashboard" class="btn-retorno">
@@ -142,7 +142,6 @@
     var progressPorcent = document.getElementById('progressPorcent');
     var progressSub = document.getElementById('progressSub');
     var btnDescargarExcel = document.getElementById('btnDescargarExcel');
-    var btnDescargarPDF = document.getElementById('btnDescargarPDF');
     var btnMasivo = document.getElementById('btnMasivo');
     var erroresSub = document.getElementById('erroresSub');
 
@@ -339,9 +338,6 @@
                 var downloadUrl = '{{ url_for("sisca_descargar", job_id="") }}' + jobId;
                 btnDescargarExcel.onclick = function() {
                     descargarFormato(downloadUrl + '?formato=xlsx');
-                };
-                btnDescargarPDF.onclick = function() {
-                    descargarFormato(downloadUrl + '?formato=pdf');
                 };
             }, 300);
         }, 600);
