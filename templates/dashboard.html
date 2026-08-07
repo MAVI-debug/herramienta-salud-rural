@@ -48,6 +48,18 @@
         </button>
     </div>
 
+    <!-- ─── Selector de Territorio ─────────────────── -->
+    <form method="GET" action="{{ url_for('dashboard') }}" class="global-fecha-form"
+          style="margin-bottom: 18px;">
+        <label class="fc-label-global">Filtrar por Territorio:</label>
+        <select name="territorio" class="global-select" onchange="this.form.submit()">
+            <option value="">Todos</option>
+            {% for t in territorios %}
+            <option value="{{ t }}" {{ 'selected' if territorio == t else '' }}>No. {{ t }}</option>
+            {% endfor %}
+        </select>
+    </form>
+
     <!-- ─── Listado de Escuelas (inline) ─────────── -->
     <div id="panelEscuelas" class="panel-escuelas" style="display:none;">
         <div class="panel-escuelas-header">
@@ -62,6 +74,7 @@
                         <th>#</th>
                         <th>Código</th>
                         <th>Nombre del Centro Educativo</th>
+                        <th>Territorio</th>
                         <th>Servicio de Salud</th>
                     </tr>
                 </thead>
@@ -71,6 +84,7 @@
                         <td>{{ loop.index }}</td>
                         <td>{{ e.codigo_centro }}</td>
                         <td>{{ e.nombre_centro }}</td>
+                        <td>{{ 'No. ' ~ e.territorio if e.territorio else '—' }}</td>
                         <td>{{ e.servicio_salud }}</td>
                     </tr>
                     {% endfor %}

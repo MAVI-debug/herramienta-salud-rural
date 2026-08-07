@@ -113,6 +113,7 @@ def _crear_esquema_nuevo_sqlite(conn):
             nombre_centro TEXT NOT NULL,
             tipo_centro TEXT NOT NULL DEFAULT 'PUBLICO',
             servicio_salud TEXT NOT NULL DEFAULT '',
+            territorio TEXT NOT NULL DEFAULT '',
             PRIMARY KEY (codigo_centro, usuario_id),
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
         );
@@ -185,6 +186,7 @@ def _run_migrations_sqlite(conn):
                     nombre_centro TEXT NOT NULL,
                     tipo_centro   TEXT CHECK(tipo_centro IN ('PÚBLICO','PRIVADO')) NOT NULL,
                     servicio_salud TEXT NOT NULL,
+                    territorio   TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (codigo_centro, usuario_id),
                     FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
                 );
@@ -261,6 +263,7 @@ def _run_migrations_sqlite(conn):
         "ALTER TABLE estudiantes ADD COLUMN grado TEXT DEFAULT ''",
         "ALTER TABLE estudiantes ADD COLUMN seccion TEXT DEFAULT ''",
         "ALTER TABLE registros_salud ADD COLUMN edad_calculo INTEGER DEFAULT NULL",
+        "ALTER TABLE escuelas ADD COLUMN territorio TEXT NOT NULL DEFAULT ''",
     ]:
         try:
             conn.execute(col_def)
@@ -284,13 +287,15 @@ def _run_migrations_sqlite(conn):
                         nombre_centro TEXT NOT NULL,
                         tipo_centro   TEXT NOT NULL DEFAULT 'PUBLICO',
                         servicio_salud TEXT NOT NULL DEFAULT '',
+                        territorio   TEXT NOT NULL DEFAULT '',
                         PRIMARY KEY (codigo_centro, usuario_id),
                         FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
                     );
                     INSERT INTO escuelas_new
                         SELECT codigo_centro, usuario_id, nombre_centro,
                                COALESCE(tipo_centro, 'PUBLICO'),
-                               COALESCE(servicio_salud, '')
+                               COALESCE(servicio_salud, ''),
+                               COALESCE(territorio, '')
                         FROM escuelas;
                     DROP TABLE escuelas;
                     ALTER TABLE escuelas_new RENAME TO escuelas;
@@ -425,6 +430,7 @@ def _run_migrations_pg(conn):
         "ALTER TABLE estudiantes ADD COLUMN IF NOT EXISTS grado TEXT DEFAULT ''",
         "ALTER TABLE estudiantes ADD COLUMN IF NOT EXISTS seccion TEXT DEFAULT ''",
         "ALTER TABLE registros_salud ADD COLUMN IF NOT EXISTS edad_calculo INTEGER DEFAULT NULL",
+        "ALTER TABLE escuelas ADD COLUMN IF NOT EXISTS territorio TEXT NOT NULL DEFAULT ''",
     ]:
         try:
             cur.execute(col_def)

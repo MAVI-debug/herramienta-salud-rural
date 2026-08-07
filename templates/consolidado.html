@@ -21,6 +21,14 @@
         </div>
 
         <form method="GET" action="{{ url_for('consolidado') }}" class="global-fecha-form">
+            <label class="fc-label-global">Territorio:</label>
+            <select name="territorio" class="global-select"
+                    onchange="this.form.submit()">
+                <option value="">Todos</option>
+                {% for t in territorios %}
+                <option value="{{ t }}" {{ 'selected' if territorio == t else '' }}>No. {{ t }}</option>
+                {% endfor %}
+            </select>
             <label class="fc-label-global">Fecha de corte:</label>
             <input type="text" name="fecha_corte" value="{{ fecha_corte_str }}"
                    placeholder="DD/MM/AAAA" class="global-date-text"
@@ -35,6 +43,13 @@
             <label class="upload-label" id="uploadLabel">Añadir Escuela (Subir PDF Nominal)</label>
             <input type="file" id="fileInput" accept=".pdf" multiple class="upload-input">
             <input type="hidden" id="fechaCorte" value="{{ fecha_corte_str }}">
+            <label class="fc-label-global">Territorio:</label>
+            <select id="territorioUpload" class="global-select">
+                <option value="">— Seleccionar —</option>
+                {% for t in territorios %}
+                <option value="{{ t }}" {{ 'selected' if territorio == t else '' }}>No. {{ t }}</option>
+                {% endfor %}
+            </select>
         </div>
     </div>
 
@@ -88,7 +103,7 @@
                     <tr class="clickable" data-target="detalle-{{ loop.index }}">
                         <td class="drag-handle">⠿</td>
                         <td>{{ loop.index }}</td>
-                        <td class="col-escuela">{{ m.nombre }}</td>
+                        <td class="col-escuela">{{ m.nombre }}{% if m.territorio %}<span class="terr-badge">T{{ m.territorio }}</span>{% endif %}</td>
                         <td>{{ m.codigo }}</td>
                         <td>{{ m.get('5_y_menos_f',0) }}</td><td>{{ m.get('5_y_menos_m',0) }}</td>
                         <td>{{ m.get('6_a_9_f',0) }}</td><td>{{ m.get('6_a_9_m',0) }}</td>
@@ -333,11 +348,18 @@ document.addEventListener('DOMContentLoaded', function() {
     var queueCounter = document.getElementById('queueCounter');
     var queueSummary = document.getElementById('queueSummary');
     var fechaCorte = document.getElementById('fechaCorte').value;
+    var territorioUpload = document.getElementById('territorioUpload');
     var processing = false;
 
     fileInput.addEventListener('change', function() {
         var files = this.files;
         if (!files || files.length === 0) return;
+
+        if (territorioUpload && !territorioUpload.value) {
+            alert('Selecciona el No. de Territorio antes de subir los PDFs.');
+            fileInput.value = '';
+            return;
+        }
 
         queueList.innerHTML = '';
         queueSummary.style.display = 'none';
@@ -379,6 +401,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var fd = new FormData();
         fd.append('archivo_pdf', item.file);
         fd.append('fecha_corte', fechaCorte);
+        fd.append('territorio', territorioUpload ? territorioUpload.value : '');
 
         fetch('/cargar_pdf_uno', { method: 'POST', body: fd })
             .then(function(r) { return r.json(); })

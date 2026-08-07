@@ -435,6 +435,10 @@ def dashboard():
 
     uid = session["usuario_id"]
 
+    if "territorio" in request.args:
+        session["territorio"] = request.args.get("territorio", "").strip()
+    territorio = (session.get("territorio") or "").strip()
+
     total_estudiantes = fetchone("""
         SELECT COUNT(*) AS c FROM estudiantes e
         WHERE e.usuario_id = %s AND EXISTS (
@@ -447,7 +451,8 @@ def dashboard():
     """, (uid,))["c"]
 
     escuelas = fetchall(
-        "SELECT codigo_centro, nombre_centro, servicio_salud FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
+        "SELECT codigo_centro, nombre_centro, servicio_salud, territorio FROM escuelas"
+        " WHERE usuario_id = %s ORDER BY nombre_centro",
         (uid,)
     )
 
@@ -521,6 +526,12 @@ def dashboard():
 
     fecha_corte_str = fecha_corte.strftime("%d/%m/%Y")
 
+    territorios = fetchall(
+        "SELECT DISTINCT territorio FROM escuelas WHERE usuario_id = %s"
+        " AND territorio != '' ORDER BY territorio",
+        (uid,)
+    )
+
     return render_template(
         "dashboard.html",
         total_estudiantes=total_estudiantes,
@@ -532,6 +543,8 @@ def dashboard():
         fecha_corte_str=fecha_corte_str,
         desp_1ra=desp_1ra,
         desp_2da=desp_2da,
+        territorio=territorio,
+        territorios=territorios,
     )
 
 
@@ -1289,14 +1302,24 @@ def _obtener_fecha_corte(uid=None):
     return date.today()
 
 
-def _consolidado_data(fecha_corte, uid=None):
+def _consolidado_data(fecha_corte, uid=None, territorio=None):
     """Retorna (matriz, escuelas_detalle, totales) para vista y exportación."""
     if uid is None:
         uid = session.get("usuario_id", 0)
-    escuelas = fetchall(
-        "SELECT codigo_centro, nombre_centro FROM escuelas WHERE usuario_id = %s ORDER BY nombre_centro",
-        (uid,)
-    )
+    if territorio is None:
+        territorio = (session.get("territorio") or "").strip()
+    if territorio:
+        escuelas = fetchall(
+            "SELECT codigo_centro, nombre_centro, territorio FROM escuelas"
+            " WHERE usuario_id = %s AND territorio = %s ORDER BY nombre_centro",
+            (uid, territorio)
+        )
+    else:
+        escuelas = fetchall(
+            "SELECT codigo_centro, nombre_centro, territorio FROM escuelas"
+            " WHERE usuario_id = %s ORDER BY nombre_centro",
+            (uid,)
+        )
 
     # Única consulta: evita N+1 por escuela
     todos_registros = fetchall("""
@@ -1351,7 +1374,8 @@ def _consolidado_data(fecha_corte, uid=None):
             conteo[key] = conteo.get(key, 0) + 1
 
         escuelas_detalle[codigo] = alumnos
-        fila = {"nombre": e["nombre_centro"], "codigo": codigo}
+        fila = {"nombre": e["nombre_centro"], "codigo": codigo,
+                "territorio": (e["territorio"] or "").strip()}
         for r in rangos:
             fila[f"{r}_f"] = conteo.get(f"{r}_f", 0)
             fila[f"{r}_m"] = conteo.get(f"{r}_m", 0)
@@ -1380,6 +1404,11 @@ def consolidado():
         return login_requerido()
 
     uid = session["usuario_id"]
+
+    # Territorio: query param > session > sin filtro (todas)
+    if "territorio" in request.args:
+        session["territorio"] = request.args.get("territorio", "").strip()
+    territorio = (session.get("territorio") or "").strip()
 
     # Fecha de corte: query param > session > DB > today
     q_fc = request.args.get("fecha_corte", "").strip()
@@ -1428,13 +1457,21 @@ def consolidado():
         ORDER BY anio DESC, id DESC
     """, (uid,))
 
+    territorios = fetchall(
+        "SELECT DISTINCT territorio FROM escuelas WHERE usuario_id = %s"
+        " AND territorio != '' ORDER BY territorio",
+        (uid,)
+    )
+
     return render_template("consolidado.html",
                            matriz=matriz,
                            totales=totales,
                            fecha_corte=fecha_corte,
                            fecha_corte_iso=fecha_corte.isoformat(),
                            fecha_corte_str=fecha_corte.strftime("%d/%m/%Y"),
-                           jornadas_historial=jornadas_historial)
+                           jornadas_historial=jornadas_historial,
+                           territorio=territorio,
+                           territorios=territorios)
 
 
 @app.route("/guardar_jornada", methods=["POST"])
@@ -1643,6 +1680,11 @@ def cargar_pdf_consolidado():
         flash("No se seleccionó ningún archivo PDF.", "danger")
         return redirect(url_for("consolidado"))
 
+    territorio = request.form.get("territorio", "").strip()
+    if not territorio:
+        flash("Debes seleccionar el No. de Territorio antes de subir los PDFs.", "danger")
+        return redirect(url_for("consolidado"))
+
     fecha_corte_str = request.form.get("fecha_corte", "").strip()
     if fecha_corte_str:
         try:
@@ -1689,11 +1731,12 @@ def cargar_pdf_consolidado():
             uid = session["usuario_id"]
             execute("""
                 INSERT INTO escuelas
-                    (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (codigo_centro, usuario_id) DO NOTHING
+                    (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud, territorio)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (codigo_centro, usuario_id)
+                DO UPDATE SET territorio = EXCLUDED.territorio
             """, (codigo, uid, nombre_escuela or "ESCUELA SIN NOMBRE",
-                  _normalizar_tipo_centro(""), ""))
+                  _normalizar_tipo_centro(""), "", territorio))
 
             for a in alumnos:
                 dia, mes, anio = sisca_logic._split_fecha(a["fecha_nac"])
@@ -1770,6 +1813,10 @@ def cargar_pdf_uno():
     if not archivo.filename.lower().endswith(".pdf"):
         return jsonify({"ok": False, "error": f"«{archivo.filename}» no es PDF."}), 400
 
+    territorio = request.form.get("territorio", "").strip()
+    if not territorio:
+        return jsonify({"ok": False, "error": "Debes seleccionar el No. de Territorio."}), 400
+
     fecha_corte_str = request.form.get("fecha_corte", "").strip()
     if fecha_corte_str:
         try:
@@ -1802,11 +1849,12 @@ def cargar_pdf_uno():
         uid = session["usuario_id"]
         execute("""
             INSERT INTO escuelas
-                (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (codigo_centro, usuario_id) DO NOTHING
+                (codigo_centro, usuario_id, nombre_centro, tipo_centro, servicio_salud, territorio)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (codigo_centro, usuario_id)
+            DO UPDATE SET territorio = EXCLUDED.territorio
         """, (codigo, uid, nombre_escuela,
-              _normalizar_tipo_centro(""), ""))
+              _normalizar_tipo_centro(""), "", territorio))
 
         for a in alumnos:
             dia, mes, anio = sisca_logic._split_fecha(a["fecha_nac"])
