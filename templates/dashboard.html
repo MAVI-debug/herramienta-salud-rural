@@ -60,11 +60,10 @@
         </select>
     </form>
 
-    <!-- ─── Gestión de Territorios (máx. 2) ───────── -->
+    <!-- ─── Gestión de Territorios ───────── -->
     <div class="consolidado-card" style="margin-bottom: 18px;">
         <div class="hcard-row">
             <h3>🗺️ Mis Territorios</h3>
-            <span class="fc-label-global">(máx. 2)</span>
         </div>
         {% if territorios %}
         <ul class="terr-list">
@@ -78,15 +77,13 @@
             {% endfor %}
         </ul>
         {% else %}
-        <p class="vacio">Aún no has creado territorios. Crea hasta 2 para organizar tus escuelas.</p>
+        <p class="vacio">Aún no has creado territorios.</p>
         {% endif %}
         {% if territorios|length < 2 %}
         <form method="POST" action="{{ url_for('agregar_territorio') }}" class="terr-add-form">
-            <input type="text" name="nombre" placeholder="Nombre del territorio (ej: Chuanoj)" class="global-date-text" maxlength="80" required>
+            <input type="text" name="nombre" placeholder="(ej: Territorio 1)" class="global-date-text" maxlength="80" required>
             <button type="submit" class="btn-upload-submit">+ Agregar Territorio</button>
         </form>
-        {% else %}
-        <p class="vacio">Límite alcanzado: ya tienes 2 territorios.</p>
         {% endif %}
     </div>
 

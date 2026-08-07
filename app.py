@@ -565,7 +565,7 @@ def agregar_territorio():
         "SELECT COUNT(*) AS c FROM territorios WHERE usuario_id = %s", (uid,)
     )["c"]
     if cuenta >= 2:
-        flash("Límite alcanzado: máximo 2 territorios por usuario.", "warning")
+        flash("No se pudo agregar el territorio.", "warning")
         return redirect(url_for("dashboard"))
 
     duplicado = fetchone(
