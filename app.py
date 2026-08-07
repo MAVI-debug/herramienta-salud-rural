@@ -527,8 +527,7 @@ def dashboard():
     fecha_corte_str = fecha_corte.strftime("%d/%m/%Y")
 
     territorios = fetchall(
-        "SELECT DISTINCT territorio FROM escuelas WHERE usuario_id = %s"
-        " AND territorio != '' ORDER BY territorio",
+        "SELECT id, nombre FROM territorios WHERE usuario_id = %s ORDER BY nombre",
         (uid,)
     )
 
@@ -546,6 +545,90 @@ def dashboard():
         territorio=territorio,
         territorios=territorios,
     )
+
+
+# ---------------------------------------------------------------------------
+# Rutas — Gestión de Territorios (máximo 2 por usuario)
+# ---------------------------------------------------------------------------
+
+@app.route("/territorios/agregar", methods=["POST"])
+def agregar_territorio():
+    if "usuario_id" not in session:
+        return login_requerido()
+    uid = session["usuario_id"]
+    nombre = request.form.get("nombre", "").strip()
+    if not nombre:
+        flash("El nombre del territorio no puede estar vacío.", "danger")
+        return redirect(url_for("dashboard"))
+
+    cuenta = fetchone(
+        "SELECT COUNT(*) AS c FROM territorios WHERE usuario_id = %s", (uid,)
+    )["c"]
+    if cuenta >= 2:
+        flash("Límite alcanzado: máximo 2 territorios por usuario.", "warning")
+        return redirect(url_for("dashboard"))
+
+    duplicado = fetchone(
+        "SELECT id FROM territorios WHERE usuario_id = %s AND UPPER(nombre) = UPPER(%s)",
+        (uid, nombre),
+    )
+    if duplicado:
+        flash("Ya existe un territorio con ese nombre.", "warning")
+        return redirect(url_for("dashboard"))
+
+    execute("INSERT INTO territorios (usuario_id, nombre) VALUES (%s, %s)", (uid, nombre))
+    commit()
+    flash(f"Territorio «{nombre}» creado.", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/territorios/eliminar/<int:territorio_id>", methods=["POST"])
+def eliminar_territorio(territorio_id):
+    if "usuario_id" not in session:
+        return login_requerido()
+    uid = session["usuario_id"]
+    t = fetchone(
+        "SELECT id, nombre FROM territorios WHERE id = %s AND usuario_id = %s",
+        (territorio_id, uid),
+    )
+    if not t:
+        flash("Territorio no encontrado.", "warning")
+        return redirect(url_for("dashboard"))
+
+    execute("UPDATE escuelas SET territorio = '' WHERE usuario_id = %s AND territorio = %s",
+            (uid, t["nombre"]))
+    execute("DELETE FROM territorios WHERE id = %s AND usuario_id = %s", (territorio_id, uid))
+    commit()
+    if session.get("territorio") == t["nombre"]:
+        session["territorio"] = ""
+    flash(f"Territorio «{t['nombre']}» eliminado. Las escuelas quedaron sin territorio.", "info")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/escuela/reasignar_territorio", methods=["POST"])
+def reasignar_territorio():
+    if "usuario_id" not in session:
+        return login_requerido()
+    uid = session["usuario_id"]
+    codigo = request.form.get("codigo_centro", "").strip()
+    territorio = request.form.get("territorio", "").strip()
+    if not codigo:
+        flash("Código de escuela no válido.", "warning")
+        return redirect(url_for("consolidado"))
+    if territorio:
+        valido = fetchone(
+            "SELECT id FROM territorios WHERE usuario_id = %s AND nombre = %s",
+            (uid, territorio),
+        )
+        if not valido:
+            flash("Territorio no válido.", "warning")
+            return redirect(url_for("consolidado"))
+
+    execute("UPDATE escuelas SET territorio = %s WHERE codigo_centro = %s AND usuario_id = %s",
+            (territorio, codigo, uid))
+    commit()
+    flash("Territorio de la escuela actualizado.", "info")
+    return redirect(url_for("consolidado"))
 
 
 # ---------------------------------------------------------------------------
@@ -1458,8 +1541,7 @@ def consolidado():
     """, (uid,))
 
     territorios = fetchall(
-        "SELECT DISTINCT territorio FROM escuelas WHERE usuario_id = %s"
-        " AND territorio != '' ORDER BY territorio",
+        "SELECT id, nombre FROM territorios WHERE usuario_id = %s ORDER BY nombre",
         (uid,)
     )
 
@@ -1620,7 +1702,9 @@ def exportar_consolidado_total():
             fecha_corte = date.today()
     else:
         fecha_corte = date.today()
-    matriz, escuelas_detalle, _ = _consolidado_data(fecha_corte)
+    q_terr = request.args.get("territorio", "").strip()
+    territorio = q_terr or (session.get("territorio") or "").strip()
+    matriz, escuelas_detalle, _ = _consolidado_data(fecha_corte, territorio=territorio)
 
     os.makedirs(SALIDA_SISCA_DIR, exist_ok=True)
     ruta = os.path.join(SALIDA_SISCA_DIR, "consolidado_total.xlsx")
@@ -1628,9 +1712,13 @@ def exportar_consolidado_total():
         ruta, matriz, escuelas_detalle, fecha_corte
     )
 
+    nombre_archivo = "consolidado_TSR.xlsx"
+    if territorio:
+        nombre_archivo = f"consolidado_TSR_{territorio}.xlsx"
+
     return send_file(
         ruta, as_attachment=True,
-        download_name="consolidado_TSR.xlsx",
+        download_name=nombre_archivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
@@ -1682,7 +1770,11 @@ def cargar_pdf_consolidado():
 
     territorio = request.form.get("territorio", "").strip()
     if not territorio:
-        flash("Debes seleccionar el No. de Territorio antes de subir los PDFs.", "danger")
+        flash("Debes seleccionar un territorio antes de subir los PDFs.", "danger")
+        return redirect(url_for("consolidado"))
+    if not fetchone("SELECT id FROM territorios WHERE usuario_id = %s AND nombre = %s",
+                    (session["usuario_id"], territorio)):
+        flash("Territorio no válido.", "danger")
         return redirect(url_for("consolidado"))
 
     fecha_corte_str = request.form.get("fecha_corte", "").strip()
@@ -1815,7 +1907,10 @@ def cargar_pdf_uno():
 
     territorio = request.form.get("territorio", "").strip()
     if not territorio:
-        return jsonify({"ok": False, "error": "Debes seleccionar el No. de Territorio."}), 400
+        return jsonify({"ok": False, "error": "Debes seleccionar un territorio."}), 400
+    if not fetchone("SELECT id FROM territorios WHERE usuario_id = %s AND nombre = %s",
+                    (session["usuario_id"], territorio)):
+        return jsonify({"ok": False, "error": "Territorio no válido."}), 400
 
     fecha_corte_str = request.form.get("fecha_corte", "").strip()
     if fecha_corte_str:

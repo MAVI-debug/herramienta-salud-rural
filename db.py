@@ -117,6 +117,13 @@ def _crear_esquema_nuevo_sqlite(conn):
             PRIMARY KEY (codigo_centro, usuario_id),
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
         );
+        CREATE TABLE territorios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER NOT NULL,
+            nombre TEXT NOT NULL,
+            UNIQUE (usuario_id, nombre),
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        );
         CREATE TABLE estudiantes (
             cui TEXT NOT NULL,
             usuario_id INTEGER NOT NULL,
@@ -372,6 +379,21 @@ def _run_migrations_sqlite(conn):
     except Exception:
         pass
 
+    # ── Migracion: tabla territorios (nombres personalizados, máx 2) ──
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS territorios (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id        INTEGER NOT NULL,
+                nombre            TEXT NOT NULL,
+                UNIQUE (usuario_id, nombre),
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+            )
+        """)
+        conn.commit()
+    except Exception:
+        pass
+
 
 def _run_migrations_pg(conn):
     cur = conn.cursor()
@@ -488,6 +510,20 @@ def _run_migrations_pg(conn):
                 total_m           INTEGER NOT NULL DEFAULT 0,
                 total_general     INTEGER NOT NULL DEFAULT 0,
                 observaciones     TEXT DEFAULT '',
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+            )
+        """)
+    except Exception:
+        pass
+
+    # ── Migracion: tabla territorios (nombres personalizados, máx 2) ──
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS territorios (
+                id                SERIAL PRIMARY KEY,
+                usuario_id        INTEGER NOT NULL,
+                nombre            TEXT NOT NULL,
+                UNIQUE (usuario_id, nombre),
                 FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
             )
         """)

@@ -11,8 +11,8 @@
         <div class="hcard-row">
             <h2>Consolidado e Historial</h2>
             <div class="consol-acciones">
-                <a href="{{ url_for('exportar_consolidado_total', fecha_corte=fecha_corte_str) }}" class="btn-descarga">
-                    ⬇ Descargar Excel completo
+                <a href="{{ url_for('exportar_consolidado_total', fecha_corte=fecha_corte_str, territorio=territorio) }}" class="btn-descarga">
+                    ⬇ Descargar Excel{% if territorio %} — {{ territorio }}{% endif %}
                 </a>
                 {% if matriz %}
                 <button type="button" class="btn-jornada" id="btnAbrirJornada">📋 Guardar Jornada</button>
@@ -26,7 +26,7 @@
                     onchange="this.form.submit()">
                 <option value="">Todos</option>
                 {% for t in territorios %}
-                <option value="{{ t }}" {{ 'selected' if territorio == t else '' }}>No. {{ t }}</option>
+                <option value="{{ t.nombre }}" {{ 'selected' if territorio == t.nombre else '' }}>{{ t.nombre }}</option>
                 {% endfor %}
             </select>
             <label class="fc-label-global">Fecha de corte:</label>
@@ -47,7 +47,7 @@
             <select id="territorioUpload" class="global-select">
                 <option value="">— Seleccionar —</option>
                 {% for t in territorios %}
-                <option value="{{ t }}" {{ 'selected' if territorio == t else '' }}>No. {{ t }}</option>
+                <option value="{{ t.nombre }}" {{ 'selected' if territorio == t.nombre else '' }}>{{ t.nombre }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -103,7 +103,7 @@
                     <tr class="clickable" data-target="detalle-{{ loop.index }}">
                         <td class="drag-handle">⠿</td>
                         <td>{{ loop.index }}</td>
-                        <td class="col-escuela">{{ m.nombre }}{% if m.territorio %}<span class="terr-badge">T{{ m.territorio }}</span>{% endif %}</td>
+                        <td class="col-escuela">{{ m.nombre }}{% if m.territorio %}<span class="terr-badge">{{ m.territorio }}</span>{% endif %}</td>
                         <td>{{ m.codigo }}</td>
                         <td>{{ m.get('5_y_menos_f',0) }}</td><td>{{ m.get('5_y_menos_m',0) }}</td>
                         <td>{{ m.get('6_a_9_f',0) }}</td><td>{{ m.get('6_a_9_m',0) }}</td>
@@ -114,6 +114,17 @@
                         <td>{{ ns.f + ns.m }}</td>
                         <td>
                             <span class="toggle-arrow">▼</span>
+                            <form method="POST" action="{{ url_for('reasignar_territorio') }}" class="reassign-form">
+                                <input type="hidden" name="codigo_centro" value="{{ m.codigo }}">
+                                <select name="territorio" class="reassign-select" title="Mover a otro territorio"
+                                        onclick="event.stopPropagation();"
+                                        onchange="this.form.submit()">
+                                    <option value="">Sin territorio</option>
+                                    {% for t in territorios %}
+                                    <option value="{{ t.nombre }}" {{ 'selected' if m.territorio == t.nombre else '' }}>{{ t.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </form>
                             <form method="POST" action="{{ url_for('eliminar_escuela') }}" style="display:inline;">
                                 <input type="hidden" name="codigo_centro" value="{{ m.codigo }}">
                                 <button type="submit" class="btn-eliminar" onclick="return confirm('¿Eliminar {{ m.nombre }}?')">✕</button>
@@ -356,7 +367,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!files || files.length === 0) return;
 
         if (territorioUpload && !territorioUpload.value) {
-            alert('Selecciona el No. de Territorio antes de subir los PDFs.');
+            alert('Selecciona un territorio antes de subir los PDFs.');
             fileInput.value = '';
             return;
         }

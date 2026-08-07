@@ -55,10 +55,40 @@
         <select name="territorio" class="global-select" onchange="this.form.submit()">
             <option value="">Todos</option>
             {% for t in territorios %}
-            <option value="{{ t }}" {{ 'selected' if territorio == t else '' }}>No. {{ t }}</option>
+            <option value="{{ t.nombre }}" {{ 'selected' if territorio == t.nombre else '' }}>{{ t.nombre }}</option>
             {% endfor %}
         </select>
     </form>
+
+    <!-- ─── Gestión de Territorios (máx. 2) ───────── -->
+    <div class="consolidado-card" style="margin-bottom: 18px;">
+        <div class="hcard-row">
+            <h3>🗺️ Mis Territorios</h3>
+            <span class="fc-label-global">(máx. 2)</span>
+        </div>
+        {% if territorios %}
+        <ul class="terr-list">
+            {% for t in territorios %}
+            <li class="terr-item">
+                <span>{{ t.nombre }}</span>
+                <form method="POST" action="{{ url_for('eliminar_territorio', territorio_id=t.id) }}" style="display:inline;">
+                    <button type="submit" class="btn-eliminar" title="Eliminar territorio" onclick="return confirm('¿Eliminar el territorio «{{ t.nombre }}»? Las escuelas quedarán sin territorio.')">✕</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="vacio">Aún no has creado territorios. Crea hasta 2 para organizar tus escuelas.</p>
+        {% endif %}
+        {% if territorios|length < 2 %}
+        <form method="POST" action="{{ url_for('agregar_territorio') }}" class="terr-add-form">
+            <input type="text" name="nombre" placeholder="Nombre del territorio (ej: Chuanoj)" class="global-date-text" maxlength="80" required>
+            <button type="submit" class="btn-upload-submit">+ Agregar Territorio</button>
+        </form>
+        {% else %}
+        <p class="vacio">Límite alcanzado: ya tienes 2 territorios.</p>
+        {% endif %}
+    </div>
 
     <!-- ─── Listado de Escuelas (inline) ─────────── -->
     <div id="panelEscuelas" class="panel-escuelas" style="display:none;">
